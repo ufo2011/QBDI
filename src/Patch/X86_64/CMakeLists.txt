@@ -1,4 +1,5 @@
 set(SOURCES
+    "${CMAKE_CURRENT_LIST_DIR}/ExecBlockFlags_X86_64.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/InstInfo_X86_64.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/InstrRule_X86_64.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/InstrRules_X86_64.cpp"

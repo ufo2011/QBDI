@@ -58,6 +58,7 @@ struct SeqInfo {
     uint16_t startInstID;
     uint16_t endInstID;
     SeqType  type;
+    uint8_t executeFlags;
 };
 
 struct SeqWriteResult {
@@ -87,7 +88,7 @@ private:
     static uint32_t                                      epilogueSize;
     static std::vector<std::shared_ptr<RelocatableInst>> execBlockPrologue;
     static std::vector<std::shared_ptr<RelocatableInst>> execBlockEpilogue;
-    static void (*runCodeBlockFct)(void*);
+    static void (*runCodeBlockFct)(void*, rword);
 
     VMInstanceRef                     vminstance;
     llvm::sys::MemoryBlock            codeBlock;
