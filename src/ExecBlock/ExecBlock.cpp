@@ -210,6 +210,25 @@ VMAction ExecBlock::execute() {
                 case STOP:
                     LogDebug("ExecBlock::execute", "Callback 0x%" PRIRWORD" returned STOP", context->hostState.callback);
                     return STOP;
+                case SKIP:
+                    {
+                        LogDebug("ExecBlock::execute", "Callback 0x%" PRIRWORD" returned SKIP", context->hostState.callback);
+                        if (instMetadata[currentInst].address == QBDI_GPR_GET(&context->gprState, REG_PC)) {
+                            // PREINST
+                            if (currentInst == seqRegistry[currentSeq].endInstID) {
+                                // last instruction of this sequence, use BREAK_TO_VM to the next instruction
+                                rword next_address = instMetadata[currentInst].address + instMetadata[currentInst].instSize;
+                                QBDI_GPR_SET(&context->gprState, REG_PC, next_address);
+                                return BREAK_TO_VM;
+                            } else {
+                                // go to currentInst + 1
+                                currentInst += 1;
+                                context->hostState.selector = reinterpret_cast<rword>(codeBlock.base()) +
+                                    static_cast<rword>(instRegistry[currentInst].offset);
+                            }
+                        } // POSTINST => continue
+                    }
+                    break;
             }
         }
     } while(context->hostState.callback != 0);

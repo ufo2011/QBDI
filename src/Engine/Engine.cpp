@@ -380,6 +380,7 @@ bool Engine::run(rword start, rword stop) {
             switch(curExecBlock->execute()) {
                 case CONTINUE:
                 case BREAK_TO_VM:
+                case SKIP:
                     break;
                 case STOP:
                     *gprState = *curGPRState;
