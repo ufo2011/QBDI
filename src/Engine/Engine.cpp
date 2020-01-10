@@ -55,8 +55,8 @@
 
 namespace QBDI {
 
-Engine::Engine(const std::string& _cpu, const std::vector<std::string>& _mattrs, VMInstanceRef vminstance)
-    : cpu(_cpu), mattrs(_mattrs), vminstance(vminstance), instrRulesCounter(0), vmCallbacksCounter(0) {
+Engine::Engine(const std::string& _cpu, const std::vector<std::string>& _mattrs, Options opts, VMInstanceRef vminstance)
+    : cpu(_cpu), mattrs(_mattrs), vminstance(vminstance), instrRulesCounter(0), vmCallbacksCounter(0), options(opts) {
     init();
 }
 
@@ -130,7 +130,7 @@ void Engine::init() {
        processTarget->createMCCodeEmitter(*MCII, *MRI, *MCTX)
     );
     // Allocate QBDI classes
-    assembly = std::make_unique<Assembly>(*MCTX, std::move(MAB), *MCII, *processTarget, *MSTI);
+    assembly = std::make_unique<Assembly>(*MCTX, std::move(MAB), *MCII, processTarget, *MSTI, options);
     blockManager = std::make_unique<ExecBlockManager>(*assembly, vminstance);
     execBroker = std::make_unique<ExecBroker>(*assembly, vminstance);
 
@@ -148,7 +148,7 @@ void Engine::init() {
     curExecBlock = nullptr;
 }
 
-void Engine::reinit(const std::string& cpu_, const std::vector<std::string>& mattrs_) {
+void Engine::reinit(const std::string& cpu_, const std::vector<std::string>& mattrs_, Options opts) {
     RequireAction("Engine::reinit", curExecBlock == nullptr && "Cannot reInit a running Engine", abort());
 
     // clear callbacks
@@ -181,26 +181,30 @@ void Engine::reinit(const std::string& cpu_, const std::vector<std::string>& mat
     cpu = cpu_;
     mattrs = mattrs_;
     tripleName = "";
+    options = opts;
 
     init();
 }
 
 Engine::Engine(const Engine& other)
-    : cpu(other.cpu), mattrs(other.mattrs), vminstance(nullptr) {
+    : cpu(other.cpu), mattrs(other.mattrs), vminstance(nullptr), options(other.options) {
     this->init();
     *this = other;
 }
 
 Engine& Engine::operator=(const Engine& other) {
+    RequireAction("Engine::operator=", curExecBlock == nullptr && "Cannot assign a running Engine", abort());
     this->clearAllCache();
 
     if (cpu != other.cpu || mattrs != other.mattrs)
-      reinit(other.cpu, other.mattrs);
+        reinit(other.cpu, other.mattrs, other.options);
+
+    this->setOptions(other.options);
 
     // copy the configuration
     instrRules.clear();
     for (const auto& r : other.instrRules) {
-      instrRules.emplace_back(r.first, r.second->clone());
+        instrRules.emplace_back(r.first, r.second->clone());
     }
     vmCallbacks = other.vmCallbacks;
     instrRulesCounter = other.instrRulesCounter;
@@ -214,6 +218,25 @@ Engine& Engine::operator=(const Engine& other) {
     setFPRState(other.getFPRState());
 
     return *this;
+}
+
+void Engine::setOptions(Options options) {
+    RequireAction("Engine::setOptions", curExecBlock == nullptr && "Cannot setOptions on a running Engine", abort());
+    if (options != this->options) {
+        clearAllCache();
+        assembly->setOptions(options);
+
+        // need to recreate all ExecBlock
+        if ( ((this->options ^ options) & (Options::DISABLE_FPR | Options::DISABLE_OPTIONAL_FPR)) != 0) {
+            const RangeSet<rword> instrumentationRange = execBroker->getInstrumentedRange();
+
+            blockManager = std::make_unique<ExecBlockManager>(*assembly, vminstance);
+            execBroker = std::make_unique<ExecBroker>(*assembly, vminstance);
+
+            execBroker->setInstrumentedRange(instrumentationRange);
+        }
+        this->options = options;
+    }
 }
 
 void Engine::changeVMInstanceRef(VMInstanceRef vminstance) {

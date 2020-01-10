@@ -85,9 +85,6 @@ private:
 
     enum PageState {RX, RW};
 
-    static uint32_t                                      epilogueSize;
-    static std::vector<std::shared_ptr<RelocatableInst>> execBlockPrologue;
-    static std::vector<std::shared_ptr<RelocatableInst>> execBlockEpilogue;
     static void (*runCodeBlockFct)(void*, rword);
 
     VMInstanceRef                     vminstance;
@@ -105,6 +102,7 @@ private:
     PageState                         pageState;
     uint16_t                          currentSeq;
     uint16_t                          currentInst;
+    uint32_t                          epilogueSize;
 
     /*! Verify if the code block is in read execute mode.
      *
@@ -133,7 +131,10 @@ public:
      * @param[in] assembly    Assembly used to assemble instructions in the ExecBlock.
      * @param[in] vminstance  Pointer to public engine interface
      */
-    ExecBlock(Assembly& assembly, VMInstanceRef vminstance = nullptr);
+    ExecBlock(Assembly& assembly, VMInstanceRef vminstance = nullptr,
+              const std::vector<std::shared_ptr<RelocatableInst>>* execBlockPrologue = nullptr,
+              const std::vector<std::shared_ptr<RelocatableInst>>* execBlockEpilogue = nullptr,
+              uint32_t epilogueSize = 0);
 
     ~ExecBlock();
 
@@ -199,6 +200,12 @@ public:
     rword getEpilogueOffset() const {
         return codeBlock.allocatedSize() - epilogueSize - codeStream->current_pos();
     }
+
+    /*! Get the size of the epilogue
+     *
+     * @return The size of the epilogue.
+     */
+    uint32_t getEpilogueSize() const { return epilogueSize; }
 
     /*! Obtain the value of the PC where the ExecBlock is currently writing instructions.
      *

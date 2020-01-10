@@ -76,6 +76,11 @@ private:
     VMInstanceRef              vminstance;
     Assembly&                  assembly;
 
+    // cache ExecBlock prologue and epilogue
+    uint32_t                                            epilogueSize;
+    const std::vector<std::shared_ptr<RelocatableInst>> execBlockPrologue;
+    const std::vector<std::shared_ptr<RelocatableInst>> execBlockEpilogue;
+
     size_t searchRegion(rword start) const;
 
     void mergeRegion(size_t i);
