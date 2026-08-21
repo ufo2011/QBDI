@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,16 +18,11 @@
 #ifndef ExecBlockFlags_ARM_H
 #define ExecBlockFlags_ARM_H
 
-#include <memory>
-#include <vector>
-
-#include "llvm/MC/MCInst.h"
-#include "llvm/MC/MCInstrInfo.h"
-#include "llvm/MC/MCRegisterInfo.h"
+#include <stdint.h>
 
 namespace QBDI {
 
-typedef enum : uint8_t {} ExecBlockFlags;
+typedef enum : uint8_t { Default = 0 } ExecBlockFlags;
 
 }
 

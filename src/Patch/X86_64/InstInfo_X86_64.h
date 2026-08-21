@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,16 @@
 #ifndef INSTINFO_X86_64_H
 #define INSTINFO_X86_64_H
 
-#include "Patch/InstInfo.h"
+namespace llvm {
+class MCInst;
+class MCInstrDesc;
+} // namespace llvm
 
 namespace QBDI {
+
+bool isStackRead(const llvm::MCInst &inst);
+
+bool isStackWrite(const llvm::MCInst &inst);
 
 bool isMinSizeRead(const llvm::MCInst &inst);
 

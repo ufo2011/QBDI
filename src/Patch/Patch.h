@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,65 +18,78 @@
 #ifndef PATCH_H
 #define PATCH_H
 
-#include <iterator>
+#include <array>
+#include <map>
+#include <memory>
+#include <set>
 #include <vector>
 
-#include "llvm/MC/MCInst.h"
-
 #include "Patch/InstMetadata.h"
-#include "Patch/RelocatableInst.h"
+#include "Patch/Register.h"
 #include "Patch/Types.h"
 
+#include "QBDI/Callback.h"
 #include "QBDI/State.h"
 
+namespace llvm {
+class MCInst;
+}
+
 namespace QBDI {
+class LLVMCPU;
+class RelocatableInst;
+
+struct InstrPatch {
+  InstPosition position;
+  int priority;
+  std::vector<std::unique_ptr<RelocatableInst>> insts;
+};
 
 class Patch {
+private:
+  std::vector<InstrPatch> instsPatchs;
+
 public:
   InstMetadata metadata;
-  RelocatableInst::UniquePtrVec insts;
+  std::vector<std::unique_ptr<RelocatableInst>> insts;
+  // flags generate by the PatchRule
+  std::vector<std::pair<unsigned int, int>> patchGenFlags;
+  int patchGenFlagsOffset = 0;
+  // InstCbLambda to register in the ExecBlockManager
+  std::vector<std::unique_ptr<InstCbLambda>> userInstCB;
+  // Registers Used and Defs by the instruction
+  std::array<RegisterUsage, NUM_GPR> regUsage;
+  std::map<RegLLVM, RegisterUsage> regUsageExtra;
+  // Registers used by the TempRegister for this patch
+  std::set<RegLLVM> tempReg;
+  const LLVMCPU *llvmcpu;
+  bool finalize = false;
 
   using Vec = std::vector<Patch>;
 
-  Patch() { metadata.patchSize = 0; }
+  Patch(const llvm::MCInst &inst, rword address, uint32_t instSize,
+        const LLVMCPU &llvmcpu);
 
-  Patch(llvm::MCInst inst, rword address, rword instSize) {
-    metadata.patchSize = 0;
-    setInst(inst, address, instSize);
-  }
+  Patch(Patch &&);
+  Patch &operator=(Patch &&);
 
-  void setMerge(bool merge) { metadata.merge = merge; }
+  ~Patch();
 
-  void setModifyPC(bool modifyPC) { metadata.modifyPC = modifyPC; }
+  void setModifyPC(bool modifyPC);
 
-  void setInst(llvm::MCInst inst, rword address, rword instSize) {
-    metadata.inst = inst;
-    metadata.address = address;
-    metadata.instSize = instSize;
-  }
+  void append(std::unique_ptr<RelocatableInst> &&r);
+  void append(std::vector<std::unique_ptr<RelocatableInst>> v);
 
-  void append(RelocatableInst::UniquePtrVec v) {
-    metadata.patchSize += v.size();
-    std::move(v.begin(), v.end(), std::back_inserter(insts));
-  }
+  void prepend(std::unique_ptr<RelocatableInst> &&r);
+  void prepend(std::vector<std::unique_ptr<RelocatableInst>> v);
 
-  void prepend(RelocatableInst::UniquePtrVec v) {
-    metadata.patchSize += v.size();
-    // front iterator on std::vector may need to move all value at each move
-    // use a back_inserter in v and swap the vector at the end
-    std::move(insts.begin(), insts.end(), std::back_inserter(v));
-    v.swap(insts);
-  }
+  void insertAt(unsigned position,
+                std::vector<std::unique_ptr<RelocatableInst>> v);
 
-  void append(RelocatableInst::UniquePtr &&r) {
-    insts.push_back(std::forward<RelocatableInst::UniquePtr>(r));
-    metadata.patchSize += 1;
-  }
+  void addInstsPatch(InstPosition position, int priority,
+                     std::vector<std::unique_ptr<RelocatableInst>> v);
 
-  void prepend(RelocatableInst::UniquePtr &&r) {
-    insts.insert(insts.begin(), std::forward<RelocatableInst::UniquePtr>(r));
-    metadata.patchSize += 1;
-  }
+  void finalizeInstsPatch();
 };
 
 } // namespace QBDI

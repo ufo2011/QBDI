@@ -1,0 +1,25 @@
+# Add QBDI target
+set(SOURCES "${CMAKE_CURRENT_LIST_DIR}/ExecBlock_AARCH64.cpp")
+
+if(QBDI_PLATFORM_LINUX OR QBDI_PLATFORM_ANDROID)
+  list(APPEND SOURCES "${CMAKE_CURRENT_LIST_DIR}/linux-android_AARCH64.s")
+
+elseif(QBDI_PLATFORM_MACOS)
+  if(QBDI_PTRAUTH)
+    list(APPEND SOURCES "${CMAKE_CURRENT_LIST_DIR}/macos_AARCH64e.s")
+  else()
+    list(APPEND SOURCES "${CMAKE_CURRENT_LIST_DIR}/macos_AARCH64.s")
+  endif()
+
+elseif(QBDI_PLATFORM_IOS)
+  if(QBDI_PTRAUTH)
+    list(APPEND SOURCES "${CMAKE_CURRENT_LIST_DIR}/ios_AARCH64e.s")
+  else()
+    list(APPEND SOURCES "${CMAKE_CURRENT_LIST_DIR}/ios_AARCH64.s")
+  endif()
+
+else()
+  message(FATAL_ERROR "No stub for ${QBDI_PLATFORM} (${QBDI_ARCH})")
+endif()
+
+target_sources(QBDI_src INTERFACE "${SOURCES}")

@@ -2,12 +2,6 @@
     :target: https://qbdi.readthedocs.io/en/stable/?badge=stable
     :alt: Documentation Status
 
-.. image:: https://travis-ci.com/QBDI/QBDI.svg?branch=master
-    :target: https://travis-ci.com/QBDI/QBDI
-
-.. image:: https://ci.appveyor.com/api/projects/status/s2qvpu8k8yiau647/branch/master?svg=true
-    :target: https://ci.appveyor.com/project/QBDI/qbdi/branch/master
-
 .. image:: https://img.shields.io/github/v/release/QBDI/QBDI
     :target: https://github.com/QBDI/QBDI/releases
 
@@ -46,55 +40,46 @@ Status
 .. role:: orange
 .. role:: red
 
-=======   ==============================   ======================   =================================
-CPU       Operating Systems                Execution                Memory Access Information
-=======   ==============================   ======================   =================================
-x86-64    Android, Linux, macOS, Windows   :green:`Supported`       :green:`Supported`
-x86       Android, Linux, macOS, Windows   :green:`Supported`       :green:`Supported`
-ARM       Linux, Android, iOS              :orange:`Planned (*)`    :orange:`Planned (*)`
-AArch64   Android                          :orange:`Planned (*)`    :orange:`Planned (*)`
-=======   ==============================   ======================   =================================
+=======   ==============================   ==================   =========================
+CPU       Operating Systems                Execution            Memory Access Information
+=======   ==============================   ==================   =========================
+x86-64    Android, Linux, macOS, Windows   :green:`Supported`   :green:`Supported`
+x86       Android, Linux, macOS, Windows   :green:`Supported`   :green:`Supported`
+ARM       Android, Linux                   :green:`Supported`   :green:`Supported`
+AArch64   Android, Linux, macOS, iOS (*)   :green:`Supported`   :green:`Supported`
+=======   ==============================   ==================   =========================
 
-.. warning::
-
-   The ARM and AArch64 instruction sets are supported but they still need to be integrated along with x86 and x86-64.
-
+\* iOS support is unstable and need a jailbroken device.
 
 **stable**
 
 .. image:: https://readthedocs.org/projects/qbdi/badge/?version=stable
-    :target: https://qbdi.readthedocs.io/en/stable/?badge=stable
+    :target: https://qbdi.readthedocs.io/en/stable/
     :alt: Documentation Status
 
-.. image:: https://travis-ci.com/QBDI/QBDI.svg?branch=master
-    :target: https://travis-ci.com/QBDI/QBDI
+.. image:: https://github.com/QBDI/QBDI/actions/workflows/windows.yml/badge.svg?branch=master
+    :target: https://github.com/QBDI/QBDI/actions/workflows/windows.yml?query=branch%3Amaster
 
-.. image:: https://ci.appveyor.com/api/projects/status/s2qvpu8k8yiau647/branch/master?svg=true
-    :target: https://ci.appveyor.com/project/QBDI/qbdi/branch/master
+.. image:: https://github.com/QBDI/QBDI/actions/workflows/linux.yml/badge.svg?branch=master
+    :target: https://github.com/QBDI/QBDI/actions/workflows/linux.yml?query=branch%3Amaster
 
-.. image:: https://github.com/QBDI/QBDI/workflows/Tests%20and%20Package%20Linux/badge.svg?branch=master
-    :target: https://github.com/QBDI/QBDI/actions?query=workflow%3A%22Tests+and+Package+Linux%22+branch%3Amaster
-
-.. image:: https://github.com/QBDI/QBDI/workflows/Tests%20and%20Package%20OSX/badge.svg?branch=master
-    :target: https://github.com/QBDI/QBDI/actions?query=workflow%3A%22Tests+and+Package+OSX%22+branch%3Amaster
+.. image:: https://github.com/QBDI/QBDI/actions/workflows/macos.yml/badge.svg?branch=master
+    :target: https://github.com/QBDI/QBDI/actions/workflows/macos.yml?query=branch%3Amaster
 
 **dev**
 
 .. image:: https://readthedocs.org/projects/qbdi/badge/?version=dev-next
-    :target: https://qbdi.readthedocs.io/en/stable/?badge=dev-next
+    :target: https://qbdi.readthedocs.io/en/dev-next/
     :alt: Documentation Status
 
-.. image:: https://travis-ci.com/QBDI/QBDI.svg?branch=dev-next
-    :target: https://travis-ci.com/QBDI/QBDI/branches
+.. image:: https://github.com/QBDI/QBDI/actions/workflows/windows.yml/badge.svg?branch=dev-next
+    :target: https://github.com/QBDI/QBDI/actions/workflows/windows.yml?query=branch%3Adev-next
 
-.. image:: https://ci.appveyor.com/api/projects/status/s2qvpu8k8yiau647/branch/dev-next?svg=true
-    :target: https://ci.appveyor.com/project/QBDI/qbdi/branch/dev-next
+.. image:: https://github.com/QBDI/QBDI/actions/workflows/linux.yml/badge.svg?branch=dev-next
+    :target: https://github.com/QBDI/QBDI/actions/workflows/linux.yml?query=branch%3Adev-next
 
-.. image:: https://github.com/QBDI/QBDI/workflows/Tests%20and%20Package%20Linux/badge.svg?branch=dev-next
-    :target: https://github.com/QBDI/QBDI/actions?query=workflow%3A%22Tests+and+Package+Linux%22+branch%3Adev-next
-
-.. image:: https://github.com/QBDI/QBDI/workflows/Tests%20and%20Package%20OSX/badge.svg?branch=dev-next
-    :target: https://github.com/QBDI/QBDI/actions?query=workflow%3A%22Tests+and+Package+OSX%22+branch%3Adev-next
+.. image:: https://github.com/QBDI/QBDI/actions/workflows/macos.yml/badge.svg?branch=dev-next
+    :target: https://github.com/QBDI/QBDI/actions/workflows/macos.yml?query=branch%3Adev-next
 
 .. intro-end
 
@@ -104,12 +89,12 @@ Installation
 C/C++/Frida APIs
 ++++++++++++++++
 
-Every new QBDI version is compiled and made available on the Github `release page <https://github.com/QBDI/QBDI/releases>`_.
+Every new QBDI version is compiled and made available on the GitHub `release page <https://github.com/QBDI/QBDI/releases>`_.
 
 Python API (PyQBDI)
 +++++++++++++++++++
 
-PyQBDI is available through PyPI. The wheel package can be either `downloaded <https://pypi.org/project/PyQBDI/#files>`_ or installed with the following command:
+PyQBDI is available through PyPI. The wheel package can be either `downloaded <https://pypi.org/project/PyQBDI/#files>`__ or installed with the following command:
 
     pip install PyQBDI
 
@@ -122,12 +107,11 @@ There is no strict development timeline or scheduled release plan for the QBDI p
 All the new features and fixes are merged onto the ``dev-next`` branch.
 Devel packages can be downloaded in the artefacts of:
 
-- `Appveyor <https://ci.appveyor.com/project/QBDI/qbdi/branch/dev-next>`_ for windows packages (C/C++ API and PyQBDI)
-- `Github Actions <https://github.com/QBDI/QBDI/actions?query=workflow%3A%22Tests+and+Package+Linux%22+branch%3Adev-next>`_ for Linux C/C++/frida API (based on ubuntu)
-- `Github Actions <https://github.com/QBDI/QBDI/actions?query=workflow%3A%22Tests+and+Package+OSX%22+branch%3Adev-next>`_ for OSX C/C++/frida API
-- `Github Actions <https://github.com/QBDI/QBDI/actions?query=workflow%3A%22Package+Android%22+branch%3Adev-next>`_ for android C/C++/frida API
-- `Github Actions <https://github.com/QBDI/QBDI/actions?query=workflow%3A%22PyQBDI+Linux+package%22+branch%3Adev-next>`_ for Linux PyQBDI
-- `Github Actions <https://github.com/QBDI/QBDI/actions?query=workflow%3A%22PyQBDI+OSX+package%22+branch%3Adev-next>`_ for OSX PyQBDI
+- `GitHub Actions <https://github.com/QBDI/QBDI/actions/workflows/android.yml?query=branch%3Adev-next>`__ for Android C/C++/frida API
+- `GitHub Actions <https://github.com/QBDI/QBDI/actions/workflows/linux.yml?query=branch%3Adev-next>`__ for Linux C/C++/frida API (based on ubuntu)
+- `GitHub Actions <https://github.com/QBDI/QBDI/actions/workflows/macos.yml?query=branch%3Adev-next>`__ for macOS C/C++/frida API
+- `GitHub Actions <https://github.com/QBDI/QBDI/actions/workflows/windows.yml?query=branch%3Adev-next>`__ for Windows packages C/C++ API
+- `GitHub Actions <https://github.com/QBDI/QBDI/actions/workflows/python.yml?query=branch%3Adev-next>`__ for PyQBDI
 
 Compilation
 ===========
@@ -135,18 +119,13 @@ Compilation
 
 To build this project, the following dependencies are needed on your system:
 
-- cmake >= 3.5
+- cmake >= 3.12
 - ninja or make
 - C++17 toolchain (gcc, clang, Visual Studio 2019, ...)
 
-The compilation is a two-step process:
-
-* local library distribution of LLVM is built.
-* QBDI is built using the LLVM library.
-
-This local built of LLVM is required because QBDI uses private APIs not exported by regular LLVM installations and
-because our code is only compatible with a specific version of those APIs. This first step is
-cached and only needs to be run once, subsequent builds only need to repeat the second step.
+A local version of llvm is statically built within QBDI because QBDI uses private APIs
+not exported by regular LLVM installations and because our code is only compatible
+with a specific version of those APIs.
 
 QBDI build system relies on CMake and requires to pass build configuration flags. To help with
 this step we provide shell scripts for common build configurations which follow the naming pattern
@@ -164,17 +143,7 @@ Create a new directory at the root of the source tree, and execute the Linux con
     mkdir build
     cd build
     ../cmake/config/config-linux-X86_64.sh
-
-If the build script warns you about missing dependencies for your platform (in the case of a first
-compilation), or if you want to rebuild them, execute the following commands::
-
-    make llvm
-
-This will rebuild the binary distribution of those dependencies for your platform. You can
-then relaunch the configuration script from above and compile::
-
-    ../cmake/config/config-linux-X86_64.sh
-    make -j4
+    ninja
 
 x86
 ^^^
@@ -190,25 +159,14 @@ Compiling QBDI on macOS requires a few things:
 * **Xcode** (from the *App Store* or *Apple Developer Tools*)
 * the **Command Line Tools** (``xcode-select --install``)
 * a package manager (preferably **MacPorts**, but *HomeBrew* should also be fine)
-* some packages (``port install cmake wget``)
+* some packages (``port install cmake wget ninja``)
 
 Once requirements are met, create a new directory at the root of the source tree, and execute the macOS configuration script::
 
     mkdir build
     cd build
     ../cmake/config/config-macOS-X86_64.sh
-
-If the build script warns you about missing dependencies for your platform (in the case of a first
-compilation), or if you want to rebuild them, execute the following commands::
-
-    make llvm
-
-
-This will rebuild the binary distribution of those dependencies for your platform. You can
-then relaunch the build script from above and compile::
-
-    ../cmake/config/config-macOS-X86_64.sh
-    make -j4
+    ninja
 
 Windows
 +++++++
@@ -228,48 +186,40 @@ Then, the following commands must be run::
     mkdir build
     cd build
     python ../cmake/config/config-win-X86_64.py
-
-If the build script warns you about missing dependencies for your platform (in the case of a first
-compilation), or if you want to rebuild them, execute the following commands::
-
-    ninja llvm
-
-This will rebuild the binary distribution of those dependencies for your platform. You can
-then relaunch the build script from above and compile::
-
-    python ../cmake/config/config-win-X86_64.py
     ninja
 
 Android
 +++++++
 
-Cross-compiling for Android requires the NDK to be installed on your workstation. For now, it has only been tested under Linux.
-If not already installed, you can download the latest Android NDK package through the `official website <https://developer.android.com/ndk/downloads>`_.
-Afterwards, the ``config-android-*.sh`` configuration script needs to be customised to match your NDK installation
-directory and the target platform:
+Cross-compiling for Android requires the NDK (or the SDK) to be installed on your workstation.
+For now, it has only been tested under Linux.
+If not already installed, you can download the latest Android NDK package
+through the `official website <https://developer.android.com/ndk/downloads>`__
+and extract it.
+Afterwards, the ``config-android-*.sh`` configuration script needs to be
+customised to match your NDK installation directory and the target platform.::
 
-* ``NDK_PATH`` should point to your Android NDK
+    # Configure and compile QBDI X86_64 with a NDK
+    mkdir build && cd build
+    NDK_PATH=<your_NDK_PATH> ../cmake/config/config-android-X86_64.sh
+    ninja
 
-At this point, you should be able to continue following the instructions of the Linux section since the procedure is the same.
+    # Configure and compile QBDI X86 with a SDK
+    mkdir build && cd build
+    ANDROID_SDK_ROOT=<your_SDK_PATH> ../cmake/config/config-android-X86.sh
+    ninja
 
 PyQBDI compilation
 ++++++++++++++++++
 
 The PyQDBI library (apart from the wheel package) can be built by solely passing the **'-DQBDI_TOOLS_PYQBDI=ON'** option to the CMake build system.
 
-However, if you want to build the wheel package, you have to compile the LLVM libraries beforehand.
-Once done, you can run these commands::
+However, if you want to build the wheel package, you can run these commands::
 
     python -m pip install --upgrade pip
-    python -m pip install setuptools wheel
-    python setup.py bdist_wheel
+    python -m pip install setuptools wheel build
+    python -m build -w
 
 A 32-bit version of Python is mandatory for the X86 architecture whereas a 64-bit one is required for the X86-64 architecture.
 
 .. compil-end
-
-About the ARM support
-=====================
-
-QBDI supports the ARM architecture up to its `0.6.2 <https://github.com/QBDI/QBDI/releases/tag/v0.6.2>`_ version.
-Unfortunately, the ARM architecture hasn't been recently tested so is now marked as deprecated.

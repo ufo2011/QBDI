@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,22 +20,22 @@
 
 #include <algorithm>
 #include <map>
+#include <memory>
+#include <stddef.h>
+#include <stdint.h>
 #include <vector>
 
 #include "QBDI/Callback.h"
 #include "QBDI/Range.h"
 #include "QBDI/State.h"
 
-namespace llvm {
-class MCInstrInfo;
-class MCRegisterInfo;
-} // namespace llvm
+#include "Utility/MovableDoubleLinkedList.h"
 
 namespace QBDI {
 
-class Assembly;
 class ExecBlock;
-class InstMetadata;
+class ExecBroker;
+class LLVMCPUs;
 class Patch;
 class RelocatableInst;
 
@@ -52,28 +52,41 @@ struct SeqLoc {
   rword seqEnd;
 };
 
-struct ExecRegion {
+class ExecRegion : public MovableDoubleLinkedListElement<ExecRegion> {
+public:
   Range<rword> covered;
-  unsigned translated;
-  unsigned available;
+  unsigned translated = 0;
+  unsigned available = 0;
   std::vector<std::unique_ptr<ExecBlock>> blocks;
+  // Note for sequenceCache instCache
+  // The key must be generate with getExecRegionKey
   std::map<rword, SeqLoc> sequenceCache;
   std::map<rword, InstLoc> instCache;
   bool toFlush = false;
 
-  ExecRegion(ExecRegion &&) = default;
-  ExecRegion &operator=(ExecRegion &&) = default;
+  // lambda ptr for user callback set with addInstrRule
+  // These pointers should be remove at the same time as the region
+  std::vector<std::unique_ptr<InstCbLambda>> userInstCB;
+
+  ExecRegion(const Range<rword> &c)
+      : MovableDoubleLinkedListElement<ExecRegion>(), covered(c) {}
+
+  ExecRegion(ExecRegion &&o) = default;
+  ExecRegion &operator=(ExecRegion &&o) = default;
 };
 
 class ExecBlockManager {
 private:
+  std::unique_ptr<ExecBroker> execBroker;
   std::vector<ExecRegion> regions;
+  std::map<rword, ExecBlock *> codeBlockMap;
+  MovableDoubleLinkedList<ExecRegion> regionsReduceList;
   rword total_translated_size;
   rword total_translation_size;
   bool needFlush;
 
   VMInstanceRef vminstance;
-  const Assembly &assembly;
+  const LLVMCPUs &llvmCPUs;
 
   // cache ExecBlock prologue and epilogue
   uint32_t epilogueSize;
@@ -91,8 +104,7 @@ private:
   float getExpansionRatio() const;
 
 public:
-  ExecBlockManager(const Assembly &assembly,
-                   VMInstanceRef vminstance = nullptr);
+  ExecBlockManager(const LLVMCPUs &llvmCPUs, VMInstanceRef vminstance);
 
   ~ExecBlockManager();
 
@@ -100,18 +112,18 @@ public:
 
   void changeVMInstanceRef(VMInstanceRef vminstance);
 
+  inline ExecBroker *getExecBroker() { return execBroker.get(); }
+
   void printCacheStatistics() const;
 
-  ExecBlock *getProgrammedExecBlock(rword address,
+  ExecBlock *getProgrammedExecBlock(rword address, CPUMode cpumode,
                                     SeqLoc *programmedSeqLock = nullptr);
 
-  const ExecBlock *getExecBlock(rword address) const;
-
-  const SeqLoc *getSeqLoc(rword address) const;
+  const ExecBlock *getExecBlock(rword address, CPUMode cpumode) const;
 
   size_t preWriteBasicBlock(const std::vector<Patch> &basicBlock);
 
-  void writeBasicBlock(const std::vector<Patch> &basicBlock, size_t patchEnd);
+  void writeBasicBlock(std::vector<Patch> &&basicBlock, size_t patchEnd);
 
   bool isFlushPending() { return needFlush; }
 
@@ -122,6 +134,19 @@ public:
   void clearCache(Range<rword> range);
 
   void clearCache(RangeSet<rword> rangeSet);
+
+  uint32_t getNbExecBlock() const { return codeBlockMap.size(); }
+
+  void reduceCacheTo(uint32_t nb);
+
+  const ExecBlock *getExecBlockFromJitAddress(rword address) const {
+    auto it = codeBlockMap.find(address);
+    if (it == codeBlockMap.end()) {
+      return nullptr;
+    } else {
+      return it->second;
+    }
+  }
 };
 
 } // namespace QBDI

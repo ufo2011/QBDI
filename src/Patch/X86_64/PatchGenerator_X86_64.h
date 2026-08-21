@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,19 @@
 #ifndef PATCHGENERATOR_X86_64_H
 #define PATCHGENERATOR_X86_64_H
 
-#include "Patch/InstInfo.h"
+#include <memory>
+#include <stddef.h>
+#include <vector>
+
+#include "QBDI/State.h"
 #include "Patch/PatchGenerator.h"
+#include "Patch/PatchUtils.h"
+#include "Patch/Types.h"
 
 namespace QBDI {
+class Patch;
+class RelocatableInst;
+class TempManager;
 
 class GetPCOffset : public AutoClone<PatchGenerator, GetPCOffset> {
 
@@ -64,9 +73,7 @@ public:
    *
   */
   std::vector<std::unique_ptr<RelocatableInst>>
-  generate(const llvm::MCInst *inst, rword address, rword instSize,
-           const llvm::MCInstrInfo *MCII, TempManager *temp_manager,
-           Patch *toMerge) const override;
+  generate(const Patch &patch, TempManager &temp_manager) const override;
 };
 
 class SimulateCall : public AutoClone<PatchGenerator, SimulateCall> {
@@ -91,9 +98,7 @@ public:
    * PUSH REG64 temp
    */
   std::vector<std::unique_ptr<RelocatableInst>>
-  generate(const llvm::MCInst *inst, rword address, rword instSize,
-           const llvm::MCInstrInfo *MCII, TempManager *temp_manager,
-           Patch *toMerge) const override;
+  generate(const Patch &patch, TempManager &temp_manager) const override;
 
   bool modifyPC() const override { return true; }
 };
@@ -123,9 +128,7 @@ public:
    * MOV MEM64 DataBlock[Offset(RIP)], REG64 temp
    */
   std::vector<std::unique_ptr<RelocatableInst>>
-  generate(const llvm::MCInst *inst, rword address, rword instSize,
-           const llvm::MCInstrInfo *MCII, TempManager *temp_manager,
-           Patch *toMerge) const override;
+  generate(const Patch &patch, TempManager &temp_manager) const override;
 
   bool modifyPC() const override { return true; }
 };
@@ -155,9 +158,7 @@ public:
    * LEA REG64 temp, MEM64 addr
    */
   std::vector<std::unique_ptr<RelocatableInst>>
-  generate(const llvm::MCInst *inst, rword address, rword instSize,
-           const llvm::MCInstrInfo *MCII, TempManager *temp_manager,
-           Patch *toMerge) const override;
+  generate(const Patch &patch, TempManager &temp_manager) const override;
 };
 
 class GetWriteAddress : public AutoClone<PatchGenerator, GetWriteAddress> {
@@ -182,15 +183,13 @@ public:
    * LEA REG64 temp, MEM64 addr
    */
   std::vector<std::unique_ptr<RelocatableInst>>
-  generate(const llvm::MCInst *inst, rword address, rword instSize,
-           const llvm::MCInstrInfo *MCII, TempManager *temp_manager,
-           Patch *toMerge) const override;
+  generate(const Patch &patch, TempManager &temp_manager) const override;
 };
 
 class GetReadValue : public AutoClone<PatchGenerator, GetReadValue> {
 
   Temp temp;
-  size_t index;
+  Temp address;
 
 public:
   /*! Resolve the memory address where the instructions will read its value and
@@ -198,43 +197,42 @@ public:
    * work before the instruction has been executed.
    *
    * @param[in] temp      A temporary where the memory value will be copied.
-   * @param[in] index     Index of access to saved when instruction
-   *                      does many read access
+   * @param[in] address   A temporary with the address to load. Unchanged
+   *                      (except if also temp)
    */
-  GetReadValue(Temp temp, size_t index = 0) : temp(temp), index(index) {}
+  GetReadValue(Temp temp, Temp address) : temp(temp), address(address) {}
 
   /*! Output:
    *
    * MOV REG64 temp, MEM64 val
    */
   std::vector<std::unique_ptr<RelocatableInst>>
-  generate(const llvm::MCInst *inst, rword address, rword instSize,
-           const llvm::MCInstrInfo *MCII, TempManager *temp_manager,
-           Patch *toMerge) const override;
+  generate(const Patch &patch, TempManager &temp_manager) const override;
 };
 
 class GetWriteValue : public AutoClone<PatchGenerator, GetWriteValue> {
 
   Temp temp;
+  Temp address;
 
 public:
   /*! Resolve the memory address where the instructions has written its value
    * and copy back the value in a temporary. This PatchGenerator is only
    * guaranteed to work after the instruction has been executed.
    *
-   * @param[in] temp   A temporary where the memory value will be copied.
-   *                   The written address must be in the tmp.
+   * @param[in] temp      A temporary where the memory value will be copied.
+   *                      The written address must be in the tmp.
+   * @param[in] address   A temporary with the address to load. Unchanged
+   *                      (except if also temp)
    */
-  GetWriteValue(Temp temp) : temp(temp) {}
+  GetWriteValue(Temp temp, Temp address) : temp(temp), address(address) {}
 
   /*! Output:
    *
    * MOV REG64 temp, MEM64 val
    */
   std::vector<std::unique_ptr<RelocatableInst>>
-  generate(const llvm::MCInst *inst, rword address, rword instSize,
-           const llvm::MCInstrInfo *MCII, TempManager *temp_manager,
-           Patch *toMerge) const override;
+  generate(const Patch &patch, TempManager &temp_manager) const override;
 };
 
 } // namespace QBDI

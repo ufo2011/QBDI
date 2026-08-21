@@ -7,10 +7,10 @@ ENV USER="docker" \
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y \
+        adduser \
         build-essential \
         cmake \
-        libstdc++-8-dev \
-        zlib1g-dev \
+        libstdc++-13-dev \
         python \
         python-dev \
         #gdb \

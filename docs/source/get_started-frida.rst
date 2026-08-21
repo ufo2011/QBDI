@@ -12,7 +12,7 @@ Common tasks
 ------------
 
 This section solely shows a few basic actions and gives you a general overview of what you can do with Frida.
-Keep in mind that Frida offers many more awesome features, all listed in the `Javascript API documentation <https://frida.re/docs/javascript-api/>`_.
+Keep in mind that Frida offers many more awesome features, all listed in the `JavaScript API documentation <https://frida.re/docs/javascript-api/>`_.
 
 Read memory
 +++++++++++
@@ -54,17 +54,17 @@ If you have a function that takes a buffer or a string as an input, you might ne
     var str = Memory.allocUtf8String("Hello World !");
 
 
-Initialise a QBDI object
-++++++++++++++++++++++++
+Initialise a VM object
+++++++++++++++++++++++
 
 If `frida-qbdi.js` (or a script requiring it) is successfully loaded in Frida,
-a new :js:class:`QBDI` object becomes available.
+a new :js:class:`VM` object becomes available.
 It provides an object oriented access to the framework features.
 
 .. code-block:: javascript
 
     // initialise QBDI
-    var vm = new QBDI();
+    var vm = new VM();
     console.log("QBDI version is " + vm.version.string);
     var state = vm.getGPRState();
 
@@ -113,10 +113,9 @@ the bindings with all the `nodejs` ecosystem.
 
 .. code-block:: javascript
 
-    const qbdi = require('/usr/local/share/qbdi/frida-qbdi'); // import QBDI bindings
-    qbdi.import(); // set bindings to the global environment
+    import { VM } from "./frida-qbdi.js";
 
-    var vm = new QBDI();
+    var vm = new VM();
     console.log("QBDI version is " + vm.version.string);
 
 It will be possible to load it in Frida in place of `frida-qbdi.js`, allowing to
@@ -126,11 +125,16 @@ JavaScript and external control in Python (or any language supported by `Frida`)
 Compilation
 +++++++++++
 
-In order to actually import QBDI bindings into your project, your script needs be *compiled* with the `frida-compile <https://www.npmjs.com/package/frida-compile>`_ utility.
+In order to actually import QBDI bindings into your project, your script needs to be *compiled* with the `frida-compile <https://www.npmjs.com/package/frida-compile>`_ utility.
 Installing it requires you to have ``npm`` installed. The `babelify package <https://www.npmjs.com/package/babelify>`_ might be also needed.
 Otherwise, you will not be able to successfully compile/load it and some errors will show up once running it with Frida.
 
+Before running frida-compile, be sure that the script ``frida-qbdi.js`` is
+inside your current directory.
+
 .. code:: bash
+
+    find <archive_extracted_path> -name frida-qbdi.js -exec cp {} . \;
 
     # if frida-compile is not already installed
     npm install frida-compile babelify
@@ -178,7 +182,7 @@ Concrete example
 ----------------
 
 If you have already had a look at the default instrumentation of the template generated with *qbdi-frida-template* (see :ref:`qbdi-frida-template`), you are probably familiar with the following example.
-Roughly speaking, what it does is creating a native call to the *Secret()* function, and instrument it looking for *XOR*.
+Roughly speaking, what it does is create a native call to the *Secret()* function, and instrument it looking for *XOR*.
 
 Source code
 +++++++++++
@@ -199,7 +203,7 @@ Generate a template
 -------------------
 
 A QBDI template can be considered as a baseline project, a minimal component you can modify and build your instrumentation tool on.
-They are provided to help you effortlessly start off a new QBDI based project.
+They are provided to help you effortlessly start off a new QBDI-based project.
 If you want to get started using QBDI bindings, you can create a brand-new default project doing:
 
 .. code:: bash

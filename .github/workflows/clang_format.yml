@@ -4,17 +4,21 @@ on: [push, pull_request]
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
-      CLANG_FORMAT_VERSION: 11
+      CLANG_FORMAT_VERSION: 19
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+      - name: Set up Python env
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Install system dependencies
         run: |
-          sudo apt install -y --no-install-recommends clang-format-${{ env.CLANG_FORMAT_VERSION }}
-          sudo pip3 install cmakelang
-      - name: Build and test QBDI
+          sudo apt install -y --no-install-recommends clang-format-${{ env.CLANG_FORMAT_VERSION }}
+          python3 -m pip install cmakelang
+      - name: Check format
         run: bash ./.github/format_check.sh
 
 

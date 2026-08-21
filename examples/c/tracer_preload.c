@@ -12,7 +12,14 @@ static VMAction onInstruction(VMInstanceRef vm, GPRState *gprState,
   return QBDI_CONTINUE;
 }
 
-int qbdipreload_on_start(void *main) { return QBDIPRELOAD_NOT_HANDLED; }
+int qbdipreload_on_start(void *main) {
+#if defined(_WIN32) || defined(WIN32) // Allow logging to show for GUI targets
+  FILE *oldStream;
+  AllocConsole();
+  freopen_s(&oldStream, "CONOUT$", "w", stdout);
+#endif
+  return QBDIPRELOAD_NOT_HANDLED;
+}
 
 int qbdipreload_on_premain(void *gprCtx, void *fpuCtx) {
   return QBDIPRELOAD_NOT_HANDLED;
@@ -23,7 +30,7 @@ int qbdipreload_on_main(int argc, char **argv) {
 }
 
 int qbdipreload_on_run(VMInstanceRef vm, rword start, rword stop) {
-  qbdi_addCodeCB(vm, QBDI_PREINST, onInstruction, NULL);
+  qbdi_addCodeCB(vm, QBDI_PREINST, onInstruction, NULL, 0);
   qbdi_run(vm, start, stop);
   return QBDIPRELOAD_NO_ERROR;
 }

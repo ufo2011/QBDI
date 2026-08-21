@@ -1,8 +1,149 @@
 CHANGELOG
 =========
 
-Next Release
-------------
+Next Release (0.12.2)
+---------------------
+
+
+Version (0.12.1)
+----------------
+
+2026-01-07 QBDI Team <qbdi@quarkslab.com>
+
+* Support for Arm64e on OSX (`#310 <https://github.com/QBDI/QBDI/pull/310>`_)
+* Fix cross-compiling from windows to android (`#315 <https://github.com/QBDI/QBDI/pull/315>`_, `#316 <https://github.com/QBDI/QBDI/pull/316>`_ and `#318 <https://github.com/QBDI/QBDI/pull/318>`_)
+* Fix broken support of some AArch64 instructions (`#313 <https://github.com/QBDI/QBDI/pull/313>`_ and `#320 <https://github.com/QBDI/QBDI/pull/320>`_)
+
+Version (0.12.0)
+----------------
+
+2025-10-14 QBDI Team <qbdi@quarkslab.com>
+
+* Add QBDIPreload implementation for windows (`#110 <https://github.com/QBDI/QBDI/pull/110>`_, `#227 <https://github.com/QBDI/QBDI/pull/227>`_ and `#277 <https://github.com/QBDI/QBDI/pull/277>`_)
+* Experimental support for IOS AArch64
+  (`#300 <https://github.com/QBDI/QBDI/pull/300>`_ and `#303 <https://github.com/QBDI/QBDI/pull/303>`_).
+  This support is experimental and work only on some jailbroken device.
+* Add new user API ``QBDI::VM::getNbExecBlock`` and ``QBDI::VM::reduceCacheTo`` to control the size of QBDI cache (`#277 <https://github.com/QBDI/QBDI/pull/277>`_)
+* Add new user API ``QBDI::VM::getJITInstAnalysis`` and new analysis
+  ``QBDI::AnalysisType::ANALYSIS_JIT`` to provide JIT information (`#277 <https://github.com/QBDI/QBDI/pull/277>`_)
+* Support legacy instruction JCXZ/JECXZ/JRCXZ on X86 and X86_64 (`#289 <https://github.com/QBDI/QBDI/pull/289>`_)
+* Add error message when PyQBDI preload fail (`#286 <https://github.com/QBDI/QBDI/pull/286>`_)
+* Update Frida API (`#290 <https://github.com/QBDI/QBDI/pull/290>`_, `#266 <https://github.com/QBDI/QBDI/pull/266>`_ and `#282 <https://github.com/QBDI/QBDI/pull/282>`_)
+* Update to LLVM19 (`#271 <https://github.com/QBDI/QBDI/pull/271>`_)
+* Support python 3.13 and 3.14 (`#270 <https://github.com/QBDI/QBDI/pull/270>`_ and `#302 <https://github.com/QBDI/QBDI/pull/302>`_)
+* Fix missing header (`#292 <https://github.com/QBDI/QBDI/pull/292>`_)
+* Fix bugeous initialisation of FTW register on windows (`#299 <https://github.com/QBDI/QBDI/pull/299>`_)
+* Fix docs typos (`#265 <https://github.com/QBDI/QBDI/pull/265>`_)
+* Fix immediate representation in disassembly (`#295 <https://github.com/QBDI/QBDI/pull/295>`_ and `#296 <https://github.com/QBDI/QBDI/pull/296>`_)
+* Fix wrong number of operand in LLVM::MCInst (`#291 <https://github.com/QBDI/QBDI/pull/291>`_ and `#304 <https://github.com/QBDI/QBDI/pull/304>`_)
+* Update template with new name from 0.11.0 (`#259 <https://github.com/QBDI/QBDI/pull/259>`_)
+
+Version (0.11.0)
+----------------
+
+2024-05-17 QBDI Team <qbdi@quarkslab.com>
+
+* Fix ARM instrumentation for 'mov pc, lr' (`#241 <https://github.com/QBDI/QBDI/pull/241>`__)
+* Add switchStackAndCall API (`#245 <https://github.com/QBDI/QBDI/pull/245>`__)
+* Rename ``QBDI::InstAnalysis::module`` and ``QBDI::InstAnalysis::symbol`` to
+  ``QBDI::InstAnalysis::moduleName`` and ``QBDI::InstAnalysis::symbolName``. The
+  same changed applied in C, C++, Python and JS API, but Python and JS API
+  deprecated but still support the previous name.
+* Update LLVM to LLVM17 (`#253 <https://github.com/QBDI/QBDI/pull/253>`_)
+* Support copy and pickle for GPRState and FPRState in PyQBDI (`#247 <https://github.com/QBDI/QBDI/pull/247>`_, `#248 <https://github.com/QBDI/QBDI/pull/248>`_)
+* Support python 3.12 (`#247 <https://github.com/QBDI/QBDI/pull/247>`_)
+
+Version 0.10.0
+--------------
+
+2023-01-26 QBDI Team <qbdi@quarkslab.com>
+
+* Fix Ubuntu package (`#217 <https://github.com/QBDI/QBDI/pull/217>`__)
+* Support ARMv7 and AArch64 architecture (`#222 <https://github.com/QBDI/QBDI/pull/222>`__)
+* Support python 3.11 (`#222 <https://github.com/QBDI/QBDI/pull/222>`__)
+* Support Frida >= 15.2 (`#222 <https://github.com/QBDI/QBDI/pull/222>`__ and `#223 <https://github.com/QBDI/QBDI/pull/223>`_)
+
+Internal update:
+
+* Move windows CI to Github Actions (`#222 <https://github.com/QBDI/QBDI/pull/222>`__)
+* Support python build with ``pyproject.toml`` (`#222 <https://github.com/QBDI/QBDI/pull/222>`__)
+* Update LLVM to LLVM15 (`#224 <https://github.com/QBDI/QBDI/pull/224>`_)
+* Add CI for ARMv7 and AArch64 (`#222 <https://github.com/QBDI/QBDI/pull/222>`__ and `#225 <https://github.com/QBDI/QBDI/pull/225>`_)
+
+Version 0.9.0
+-------------
+
+2022-03-31 QBDI Team <qbdi@quarkslab.com>
+
+* Change internal log system (`#174 <https://github.com/QBDI/QBDI/pull/174>`_).
+
+  * The API ``QBDI::addLogFilter`` has been replaced by :cpp:func:`QBDI::setLogPriority`.
+  * The API ``QBDI::setLogOutput`` has been replaced by
+    :cpp:func:`QBDI::setLogFile`, :cpp:func:`QBDI::setLogConsole` and
+    :cpp:func:`QBDI::setLogDefault`.
+
+* Fix templates (`#186 <https://github.com/QBDI/QBDI/pull/186>`_)
+* Fix Frida-QBDI for Frida 15.0.0 (`#192 <https://github.com/QBDI/QBDI/pull/192>`_)
+* Change behavior of :cpp:func:`QBDI::VM::addInstrumentedModuleFromAddr` to work
+  with mmap region (`#193 <https://github.com/QBDI/QBDI/pull/193>`_)
+* Add Priority to InstCallback API (`#194 <https://github.com/QBDI/QBDI/pull/194>`_).
+  If two or more InstCallback target the same position (PRE or POST) of the same
+  instruction, the priority parameter allows to specify which InstCallback should
+  be called first. see :cpp:enum:`QBDI::CallbackPriority`
+* Support for X86 ``loop``, ``loope`` and ``loopne`` instructions
+  (`#200 <https://github.com/QBDI/QBDI/pull/200>`_)
+* Add support for ``FS`` and ``GS`` segment in X86_64
+  (`#190 <https://github.com/QBDI/QBDI/pull/190>`_). To support the feature, the
+  kernel must support ``RDFSBASE``, ``RDGSBASE``, ``WRFSBASE`` and ``WRGSBASE``
+  instructions (linux >= 5.9). To enable the support, the option
+  :cpp:enumerator:`QBDI::Options::OPT_ENABLE_FS_GS` must be enabled.
+* Hide LLVM symbols from shared library and QBDIPreload
+  (`#205 <https://github.com/QBDI/QBDI/pull/205>`_)
+* Support python 3.10 for PyQBDI
+  (`#206 <https://github.com/QBDI/QBDI/pull/206>`_)
+* Add VMAction :cpp:enumerator:`QBDI::VMAction::SKIP_INST` and
+  :cpp:enumerator:`QBDI::VMAction::SKIP_PATCH`
+  (`#197 <https://github.com/QBDI/QBDI/pull/197>`_)
+
+  * :cpp:enumerator:`QBDI::VMAction::SKIP_INST` can be used to emulate the
+    instruction with a PREINST callback. When this VMAction is returned by a
+    PREINST callback, QBDI will directly jump to the POSTINST callback.
+  * :cpp:enumerator:`QBDI::VMAction::SKIP_PATCH` can be used to jump over all
+    the reminding callback for the current instruction. If uses in PREINST
+    position, the instruction will not be executed.
+
+  The value associated with the existing :cpp:enum:`QBDI::VMAction` has changed.
+
+* Add tutorial for basic block VMEvent (`#165 <https://github.com/QBDI/QBDI/pull/165>`_)
+* Support C++ lambda with capture. (`#207 <https://github.com/QBDI/QBDI/pull/207>`_)
+  see :cpp:type:`QBDI::InstCbLambda`, :cpp:type:`QBDI::VMCbLambda`
+  and :cpp:type:`QBDI::InstrRuleCbLambda`
+* Fix a bug where some symbols were missing in QBDIPreload (`#209 <https://github.com/QBDI/QBDI/pull/209>`_)
+* Remove new name of libc in QBDIPreload (`#211 <https://github.com/QBDI/QBDI/pull/211>`_)
+* Support of some self-modifying code (`#212 <https://github.com/QBDI/QBDI/pull/212>`_).
+  QBDI will not crash if invalid instructions are found when handling a new basic
+  block.
+* Add tutorial for ExecBroker VMEvent (`#166 <https://github.com/QBDI/QBDI/pull/166>`_)
+* Change :cpp:func:`QBDI::getVersion` out parameter to return version to the form ``0xMMmmpp`` (`#214 <https://github.com/QBDI/QBDI/pull/214>`_)
+
+Internal update:
+
+* Add static library licenses in LICENSE.txt (`#169 <https://github.com/QBDI/QBDI/pull/169>`_)
+* Format code with clang-format and cmake-format (`#175 <https://github.com/QBDI/QBDI/pull/175>`_)
+* Fix integer overflow in cache optimisation (`#168 <https://github.com/QBDI/QBDI/pull/168>`_)
+* Refactor build system, add llvm build in main cmake with FetchContent,
+  move all LLVM object in a new LLVMCPU class, split internal class, split state by architecture
+  (`#178 <https://github.com/QBDI/QBDI/pull/178>`_,
+  `#179 <https://github.com/QBDI/QBDI/pull/179>`_ and
+  `#188 <https://github.com/QBDI/QBDI/pull/188>`_)
+* Update LLVM to LLVM 13.0.0, remove zlib dependency
+  (`#180 <https://github.com/QBDI/QBDI/pull/189>`_, `#196 <https://github.com/QBDI/QBDI/pull/196>`_)
+* Remove empty Patch not associated to an MCInst (`#195 <https://github.com/QBDI/QBDI/pull/195>`_)
+* Compile assembly with ``--noexecstack`` to have a ``rw-`` stack when using QBDI
+  on linux (`#201 <https://github.com/QBDI/QBDI/pull/201>`_)
+* Use build directory to build the documentation (`#213 <https://github.com/QBDI/QBDI/pull/213>`_)
+* Use Doxygen 1.9.2 in readthedocs (`#214 <https://github.com/QBDI/QBDI/pull/214>`_)
+
 
 Version 0.8.0
 -------------

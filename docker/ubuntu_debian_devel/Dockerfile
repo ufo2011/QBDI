@@ -14,51 +14,20 @@ ENV USER="docker" \
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends \
+        adduser \
         bash \
         sudo \
         build-essential \
         cmake \
         g++ \
-        g++-multilib \
         git \
-        libstdc++-8-dev \
+        libstdc++-13-dev \
         ninja-build \
         pkg-config \
         wget \
         ca-certificates \
-        zlib1g-dev \
         python3 \
-        python3-dev && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# create a user
-RUN adduser --disabled-password --gecos '' $USER && \
-    adduser $USER sudo && \
-    echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
-
-# switch to new user
-USER $USER
-
-# install QBDI compilation dependencies
-
-# git archive -o qbdi-deps.tar.gz --prefix=qbdi-deps/ HEAD deps
-ADD qbdi-deps.tar.gz $HOME/
-
-WORKDIR $HOME
-
-RUN sudo chown -R $USER:$USER .
-
-WORKDIR $HOME/qbdi-deps/deps/llvm/
-
-RUN python3 build.py prepare ${QBDI_PLATFORM}-${QBDI_ARCH} && \
-    python3 build.py build ${QBDI_PLATFORM}-${QBDI_ARCH} OFF && \
-    python3 build.py package ${QBDI_PLATFORM}-${QBDI_ARCH} && \
-    python3 build.py clean ${QBDI_PLATFORM}-${QBDI_ARCH}
-
-# install validator dependency after build llvm to use the same cache between devel and release image
-RUN sudo apt-get update && \
-    sudo apt-get install -y --no-install-recommends \
+        python3-dev \
         python3-yaml \
         imagemagick \
         zip \
@@ -66,8 +35,13 @@ RUN sudo apt-get update && \
         file \
         xxd \
         git && \
-    sudo apt-get clean  && \
-    sudo rm -rf /var/lib/apt/lists/*
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# create a user and add user in sudo to ease debug
+RUN adduser --disabled-password --gecos '' --home "$HOME" "$USER" && \
+    adduser $USER sudo && \
+    echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
 # build / test / install QBDI
 ARG CMAKE_ARGUMENT=""
@@ -77,12 +51,12 @@ ADD qbdi.tar.gz $HOME/
 
 WORKDIR $HOME/qbdi
 
-RUN sudo chown -R $USER:$USER . && \
-    # link llvm
-    rm -rf deps && \
-    ln -s $HOME/qbdi-deps/deps deps && \
-    # build
-    mkdir build && \
+RUN chown -R $USER:$USER .
+
+# switch to new user
+USER $USER
+
+RUN mkdir build && \
     cd build && \
     cmake -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \

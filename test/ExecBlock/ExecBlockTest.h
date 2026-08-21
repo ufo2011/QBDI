@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,11 @@
 #define QBDITEST_EXECBLOCKTEST_H
 
 #include "TestSetup/LLVMTestEnv.h"
+#include "QBDI/VM.h"
 
-class ExecBlockTest : public LLVMTestEnv {};
+class ExecBlockTest : public LLVMTestEnv {
+public:
+  QBDI::VM vm;
+};
 
 #endif /* QBDITEST_EXECBLOCKTEST_H */

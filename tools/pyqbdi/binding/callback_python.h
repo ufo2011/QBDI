@@ -1,7 +1,7 @@
 /*
- * This file is part of QBDI.
+ * This file is part of pyQBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,10 +33,11 @@ struct InstrRuleDataCBKPython {
   PyInstCallback cbk;
   py::object data;
   InstPosition position;
+  int priority;
 
   InstrRuleDataCBKPython(PyInstCallback &cbk, py::object &data,
-                         InstPosition position)
-      : cbk(cbk), data(data), position(position) {}
+                         InstPosition position, int priority = PRIORITY_DEFAULT)
+      : cbk(cbk), data(data), position(position), priority(priority) {}
 };
 
 using PyInstrRuleCallback = std::function<std::vector<InstrRuleDataCBKPython>(

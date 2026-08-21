@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef VALIDATOR_PIPES_H
+#define VALIDATOR_PIPES_H
+
 #include <memory.h>
 #include <stdio.h>
 #include <vector>
@@ -29,6 +32,8 @@ enum EVENT {
   EXIT,
 };
 
+inline int format_as(EVENT e) { return e; }
+
 enum COMMAND {
   CONTINUE,
   STOP,
@@ -41,11 +46,13 @@ int writeCString(const char *str, FILE *pipe);
 int readInstructionEvent(QBDI::rword *address, char *mnemonic,
                          size_t mnemonic_len, char *disassembly,
                          size_t disassembly_len, QBDI::GPRState *gprState,
-                         QBDI::FPRState *fprState, FILE *pipe);
+                         QBDI::FPRState *fprState, bool *debuggerSkip,
+                         FILE *pipe);
 
 int writeInstructionEvent(QBDI::rword address, const char *mnemonic,
                           const char *disassembly, QBDI::GPRState *gprState,
-                          QBDI::FPRState *fprState, FILE *pipe);
+                          QBDI::FPRState *fprState, bool debuggerSkip,
+                          FILE *pipe);
 
 int readMismatchMemAccessEvent(QBDI::rword *address, bool *doRead,
                                bool *mayRead, bool *doWrite, bool *mayWrite,
@@ -68,3 +75,5 @@ int writeEvent(EVENT event, FILE *pipe);
 int readCommand(COMMAND *command, FILE *pipe);
 
 int writeCommand(COMMAND command, FILE *pipe);
+
+#endif // VALIDATOR_PIPES_H

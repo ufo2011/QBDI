@@ -8,7 +8,7 @@ Introduction
 
 We offer bindings for Python, the whole C/C++ API is available through them, but they are also backed up by plenty of helpers that fluidify the script writing.
 
-On Linux and macOS, PyQBDI supports QBDIPreload as :ref:`PyQBDIPreload <pyqbdipreload_api>`.
+On Linux, macOS and Windows, PyQBDI supports QBDIPreload as :ref:`PyQBDIPreload <pyqbdipreload_api>`.
 
 However, you must be aware that PyQBDI has some limitations:
 
@@ -23,12 +23,13 @@ VM class
 .. autoclass:: pyqbdi.VM
     :special-members: __init__
     :members:
-    :exclude-members: getGPRState, getFPRState, setGPRState, setFPRState,
+    :exclude-members: getGPRState, getFPRState, getErrno, setGPRState, setFPRState, setErrno,
                       addInstrumentedRange, addInstrumentedModule, addInstrumentedModuleFromAddr, instrumentAllExecutableMaps,
                       removeInstrumentedRange, removeInstrumentedModule, removeInstrumentedModuleFromAddr, removeAllInstrumentedRanges,
                       addCodeCB, addCodeAddrCB, addCodeRangeCB, addMnemonicCB, addVMEventCB, addMemAccessCB, addMemAddrCB, addMemRangeCB,
                       recordMemoryAccess, addInstrRule, addInstrRuleRange, deleteInstrumentation, deleteAllInstrumentations, run, call,
-                      getInstAnalysis, getCachedInstAnalysis, getInstMemoryAccess, getBBMemoryAccess, precacheBasicBlock, clearCache, clearAllCache
+                      getInstAnalysis, getCachedInstAnalysis, getInstMemoryAccess, getBBMemoryAccess, precacheBasicBlock, clearCache, clearAllCache,
+                      reduceCacheTo, getNbExecBlock, getJITInstAnalysis
 
 .. _state-management-pyqbdi:
 
@@ -39,9 +40,13 @@ State management
 
 .. autofunction:: pyqbdi.VM.getFPRState
 
+.. autofunction:: pyqbdi.VM.getErrno
+
 .. autofunction:: pyqbdi.VM.setGPRState
 
 .. autofunction:: pyqbdi.VM.setFPRState
+
+.. autofunction:: pyqbdi.VM.setErrno
 
 .. _instrumentation-range-pyqbdi:
 
@@ -136,6 +141,8 @@ InstAnalysis
 
 .. autofunction:: pyqbdi.VM.getCachedInstAnalysis
 
+.. autofunction:: pyqbdi.VM.getJITInstAnalysis
+
 .. _memaccess-getter-pyqbdi:
 
 MemoryAccess
@@ -156,10 +163,18 @@ Cache management
 
 .. autofunction:: pyqbdi.VM.clearAllCache
 
+.. autofunction:: pyqbdi.VM.getNbExecBlock
+
+.. autofunction:: pyqbdi.VM.reduceCacheTo
+
 .. _register-state-pyqbdi:
 
 Register state
 --------------
+
+This documentation only shows the register for the X86_64 architectures. For ARM
+and AARCH64, the GPRState and FPRState are similar to the C/C++
+:cpp:class:`QBDI::GPRState` and :cpp:class:`QBDI::FPRState`.
 
 .. autoclass:: pyqbdi.GPRState
     :members:
@@ -228,6 +243,8 @@ Callback
     :members:
 
 .. autodata:: pyqbdi.InstPosition
+
+.. autodata:: pyqbdi.CallbackPriority
 
 .. autodata:: pyqbdi.VMAction
 
@@ -305,6 +322,9 @@ Exploration
 Other globals
 -------------
 
+This documentation only shows the options available for the X86_64 architectures. For ARM
+and AARCH64, refer the C/C++ API :cpp:enum:`QBDI::Options`.
+
 .. autodata:: pyqbdi.Options
 
 .. autodata:: pyqbdi.VMError
@@ -332,7 +352,7 @@ Log
 
 .. autodata:: pyqbdi.LogPriority
 
-.. autofunction:: pyqbdi.addLogFilter
+.. autofunction:: pyqbdi.setLogPriority
 
 Range
 +++++

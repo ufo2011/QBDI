@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,34 +15,93 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <stdlib.h>
 #include <vector>
 
-#include "Range.h"
+#include "QBDI/Range.h"
+#include "Patch/Utils.h"
+
+template <typename T>
+void checkRangeSetInvariant(const QBDI::RangeSet<T> &set) {
+  const std::vector<QBDI::Range<T>> &ranges = set.getRanges();
+
+  for (const auto &r : ranges) {
+    // no empty ranges in the set
+    REQUIRE(r.start() < r.end());
+  }
+
+  for (unsigned i = 1; i < ranges.size(); i++) {
+    // the range in the set are sorted.
+    // Moreever, the set should be minimized
+    REQUIRE(ranges[i - 1].end() < ranges[i].start());
+  }
+}
+
+TEST_CASE("Range-UnitTest") {
+
+  std::vector<QBDI::Range<int>> testRanges = {
+      {50, 60, QBDI::real_addr_t()},  {85, 90, QBDI::real_addr_t()},
+      {10, 20, QBDI::real_addr_t()},  {25, 30, QBDI::real_addr_t()},
+      {65, 70, QBDI::real_addr_t()},  {70, 75, QBDI::real_addr_t()},
+      {74, 80, QBDI::real_addr_t()},  {80, 84, QBDI::real_addr_t()},
+      {60, 85, QBDI::real_addr_t()},  {40, 60, QBDI::real_addr_t()},
+      {9, 120, QBDI::real_addr_t()},  {55, 67, QBDI::real_addr_t()},
+      {80, 200, QBDI::real_addr_t()}, {5, 150, QBDI::real_addr_t()},
+  };
+  QBDI::RangeSet<int> rangeSet;
+  QBDI::RangeSet<int> rangeSetInv;
+  rangeSetInv.add({0, 1000, QBDI::real_addr_t()});
+
+  for (unsigned i = 0; i < testRanges.size(); i++) {
+    rangeSet.add(testRanges[i]);
+    rangeSetInv.remove(testRanges[i]);
+
+    checkRangeSetInvariant(rangeSet);
+    checkRangeSetInvariant(rangeSetInv);
+
+    for (unsigned j = 0; j <= i; j++) {
+      REQUIRE(rangeSet.contains(testRanges[i]));
+      REQUIRE_FALSE(rangeSetInv.contains(testRanges[i]));
+      REQUIRE_FALSE(rangeSetInv.overlaps(testRanges[i]));
+    }
+
+    for (const auto &r : rangeSet.getRanges()) {
+      REQUIRE_FALSE(rangeSetInv.contains(r));
+      REQUIRE_FALSE(rangeSetInv.overlaps(r));
+    }
+
+    for (const auto &r : rangeSetInv.getRanges()) {
+      REQUIRE_FALSE(rangeSet.contains(r));
+      REQUIRE_FALSE(rangeSet.overlaps(r));
+    }
+  }
+}
 
 TEST_CASE("Range-StateIntegrity") {
-  static const int N = 100;
+  INFO("TEST_SEED=" << seed_random());
+  static const unsigned N = 100;
   std::vector<QBDI::Range<int>> testRanges;
   QBDI::RangeSet<int> rangeSet;
 
-  for (int i = 0; i < N; i++) {
-    int start = rand() % 900;
-    int end = start + rand() % 100 + 1;
+  for (unsigned i = 0; i < N; i++) {
+    int start = get_random() % 900;
+    int end = start + get_random() % 100 + 1;
     int delta = -rangeSet.size();
-    QBDI::Range<int> r(start, end);
+    QBDI::Range<int> r(start, end, QBDI::real_addr_t());
 
     testRanges.push_back(r);
     rangeSet.add(r);
     delta += rangeSet.size();
 
-    CHECK(r.size() >= delta);
-    CHECK(rangeSet.contains(r));
-    CHECK(rangeSet.contains(r.start()));
-    CHECK(rangeSet.contains(r.end() - 1));
+    REQUIRE(r.size() >= delta);
+    REQUIRE(rangeSet.contains(r));
+    REQUIRE(rangeSet.contains(r.start()));
+    REQUIRE(rangeSet.contains(r.end() - 1));
+    checkRangeSetInvariant(rangeSet);
   }
 
-  for (int i = 0; i < N; i++) {
+  for (unsigned i = 0; i < N; i++) {
     int delta = rangeSet.size();
     QBDI::Range<int> r = testRanges.back();
 
@@ -50,19 +109,20 @@ TEST_CASE("Range-StateIntegrity") {
     rangeSet.remove(r);
     delta -= rangeSet.size();
 
-    CHECK(r.size() >= delta);
-    CHECK_FALSE(rangeSet.contains(r));
-    CHECK_FALSE(rangeSet.contains(r.start()));
-    CHECK_FALSE(rangeSet.contains(r.end() - 1));
+    REQUIRE(r.size() >= delta);
+    REQUIRE_FALSE(rangeSet.contains(r));
+    REQUIRE_FALSE(rangeSet.contains(r.start()));
+    REQUIRE_FALSE(rangeSet.contains(r.end() - 1));
+    checkRangeSetInvariant(rangeSet);
   }
-  CHECK(0 == rangeSet.size());
+  REQUIRE(0 == rangeSet.size());
 }
 
 template <typename T>
 void randomPermutation(std::vector<T> &v) {
   size_t i = 0;
   for (i = 0; i < v.size(); i++) {
-    size_t p = rand() % v.size();
+    size_t p = get_random() % v.size();
     T t = v[i];
     v[i] = v[p];
     v[p] = t;
@@ -70,23 +130,25 @@ void randomPermutation(std::vector<T> &v) {
 }
 
 TEST_CASE("Range-Commutativity") {
-  static const int N = 100;
+  INFO("TEST_SEED=" << seed_random());
+  static const unsigned N = 100;
   std::vector<QBDI::Range<int>> testRanges;
   QBDI::RangeSet<int> rangeSet;
 
-  for (int i = 0; i < N; i++) {
-    int start = rand() % 1000000;
-    int end = start + 1 + rand() % 10000;
-    QBDI::Range<int> r(start, end);
+  for (unsigned i = 0; i < N; i++) {
+    int start = get_random() % 1000000;
+    int end = start + 1 + get_random() % 10000;
+    QBDI::Range<int> r(start, end, QBDI::real_addr_t());
     testRanges.push_back(r);
     rangeSet.add(r);
+    checkRangeSetInvariant(rangeSet);
   }
 
-  for (int c = 0; c < N; c++) {
+  for (unsigned c = 0; c < N; c++) {
     QBDI::RangeSet<int> permutedRangeSet;
 
     randomPermutation(testRanges);
-    for (int i = 0; i < N; i++) {
+    for (unsigned i = 0; i < N; i++) {
       permutedRangeSet.add(testRanges[i]);
     }
     REQUIRE(rangeSet.size() == permutedRangeSet.size());
@@ -100,22 +162,25 @@ TEST_CASE("Range-Commutativity") {
 }
 
 TEST_CASE("Range-Intersection") {
-  static const int N = 100;
+  INFO("TEST_SEED=" << seed_random());
+  static const unsigned N = 100;
   QBDI::RangeSet<int> rangeSet1;
   QBDI::RangeSet<int> rangeSet2;
   QBDI::RangeSet<int> intersection1;
   QBDI::RangeSet<int> intersection2;
 
-  for (int i = 0; i < N; i++) {
-    int start = rand() % 1000000;
-    int end = start + 1 + rand() % 10000;
-    rangeSet1.add(QBDI::Range<int>(start, end));
+  for (unsigned i = 0; i < N; i++) {
+    int start = get_random() % 1000000;
+    int end = start + 1 + get_random() % 10000;
+    rangeSet1.add(QBDI::Range<int>(start, end, QBDI::real_addr_t()));
+    checkRangeSetInvariant(rangeSet1);
   }
 
-  for (int i = 0; i < N; i++) {
-    int start = rand() % 1000000;
-    int end = start + 1 + rand() % 10000;
-    rangeSet2.add(QBDI::Range<int>(start, end));
+  for (unsigned i = 0; i < N; i++) {
+    int start = get_random() % 1000000;
+    int end = start + 1 + get_random() % 10000;
+    rangeSet2.add(QBDI::Range<int>(start, end, QBDI::real_addr_t()));
+    checkRangeSetInvariant(rangeSet2);
   }
 
   intersection1.add(rangeSet1);
@@ -124,6 +189,8 @@ TEST_CASE("Range-Intersection") {
   intersection2.intersect(rangeSet1);
 
   REQUIRE(intersection1 == intersection2);
+  checkRangeSetInvariant(intersection1);
+  checkRangeSetInvariant(intersection2);
 
   for (QBDI::Range<int> r : intersection1.getRanges()) {
     REQUIRE(true == rangeSet1.contains(r));
@@ -132,13 +199,14 @@ TEST_CASE("Range-Intersection") {
 }
 
 TEST_CASE("Range-IntersectionAndOverlaps") {
-  static const int N = 100;
+  INFO("TEST_SEED=" << seed_random());
+  static const unsigned N = 100;
   std::vector<QBDI::Range<int>> testRanges;
 
-  for (int i = 0; i < N; i++) {
-    int start = rand() % 900;
-    int end = start + rand() % 100 + 1;
-    QBDI::Range<int> newRange{start, end};
+  for (unsigned i = 0; i < N; i++) {
+    int start = get_random() % 900;
+    int end = start + get_random() % 100 + 1;
+    QBDI::Range<int> newRange{start, end, QBDI::real_addr_t()};
 
     for (const QBDI::Range<int> &r : testRanges) {
       QBDI::RangeSet<int> set;
@@ -150,6 +218,7 @@ TEST_CASE("Range-IntersectionAndOverlaps") {
       REQUIRE((set.size() < newRange.size() + r.size()) ==
               newRange.overlaps(r));
       REQUIRE(r.overlaps(newRange) == newRange.overlaps(r));
+      checkRangeSetInvariant(set);
     }
     testRanges.push_back(newRange);
   }

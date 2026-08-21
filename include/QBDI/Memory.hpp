@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ struct MemoryMap {
 
   /* Construct a new (empty) MemoryMap.
    */
-  MemoryMap() : range(0, 0), permission(QBDI::PF_NONE){};
+  MemoryMap() : range(0, 0, real_addr_t()), permission(QBDI::PF_NONE) {};
 
   /*! Construct a new MemoryMap (given some properties).
    *
@@ -69,7 +69,7 @@ struct MemoryMap {
    *                         a module).
    */
   MemoryMap(rword start, rword end, Permission permission, std::string name)
-      : range(start, end), permission(permission), name(name) {}
+      : range(start, end, auth_addr_t()), permission(permission), name(name) {}
 
   /*! Construct a new MemoryMap (given some properties).
    *

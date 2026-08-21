@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,20 +15,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <stdio.h>
 
 #include "ExecBlockTest.h"
+#include "PatchEmpty.h"
 
 #include "ExecBlock/ExecBlock.h"
+#include "Patch/ExecBlockPatch.h"
 #include "Patch/Patch.h"
 #include "Patch/PatchRule.h"
-#include "Patch/PatchRules.h"
-#include "Utility/Assembly.h"
+#include "Patch/RelocatableInst.h"
 
 TEST_CASE_METHOD(ExecBlockTest, "ExecBlockTest-EmptyBasicBlock") {
   // Allocate ExecBlock
-  QBDI::ExecBlock execBlock(*assembly);
+  QBDI::ExecBlock execBlock(*this, &this->vm);
   // Write an empty basic block
   QBDI::Patch::Vec empty;
   QBDI::SeqWriteResult res =
@@ -37,16 +38,17 @@ TEST_CASE_METHOD(ExecBlockTest, "ExecBlockTest-EmptyBasicBlock") {
 }
 
 TEST_CASE_METHOD(ExecBlockTest, "ExecBlockTest-MultipleBasicBlock") {
+  const QBDI::LLVMCPU &llvmcpu = this->getCPU(QBDI::CPUMode::DEFAULT);
   // Allocate ExecBlock
-  QBDI::ExecBlock execBlock(*assembly);
+  QBDI::ExecBlock execBlock(*this, &this->vm);
   // Jit two different terminators
   QBDI::Patch::Vec terminator1;
   QBDI::Patch::Vec terminator2;
-  terminator1.push_back(QBDI::Patch());
-  terminator2.push_back(QBDI::Patch());
-  terminator1[0].append(QBDI::getTerminator(0x42424242));
+  terminator1.push_back(generateEmptyPatch(0x42424240, *this));
+  terminator2.push_back(generateEmptyPatch(0x13371338, *this));
+  terminator1[0].append(QBDI::getTerminator(llvmcpu, 0x42424240));
   terminator1[0].metadata.modifyPC = true;
-  terminator2[0].append(QBDI::getTerminator(0x13371337));
+  terminator2[0].append(QBDI::getTerminator(llvmcpu, 0x13371338));
   terminator2[0].metadata.modifyPC = true;
   QBDI::SeqWriteResult block1 =
       execBlock.writeSequence(terminator1.begin(), terminator1.end());
@@ -74,7 +76,7 @@ TEST_CASE_METHOD(ExecBlockTest, "ExecBlockTest-MultipleBasicBlock") {
 
 TEST_CASE_METHOD(ExecBlockTest, "ExecBlockTest-BasicBlockOverload") {
   // Allocate ExecBlock
-  QBDI::ExecBlock execBlock(*assembly);
+  QBDI::ExecBlock execBlock(*this, &this->vm);
   QBDI::Patch::Vec empty;
   QBDI::SeqWriteResult res;
   uint32_t i = 0;

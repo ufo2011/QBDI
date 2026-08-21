@@ -24,13 +24,13 @@ endif()
 # QBDI Version
 # ========================
 # note: the version should also be changed in the followed files:
-# - docker/archlinux/PKGBUILD.linux-{X86|X86_64}
+# - docker/archlinux/PKGBUILD.{X86|X86_64}
 # - docker/common.sh
-# - setup.py
+# - setup.cfg
 # - tools/frida-qbdi.js
 set(QBDI_VERSION_MAJOR 0)
-set(QBDI_VERSION_MINOR 8)
-set(QBDI_VERSION_PATCH 1)
+set(QBDI_VERSION_MINOR 12)
+set(QBDI_VERSION_PATCH 2)
 set(QBDI_VERSION_DEV 1)
 
 set(QBDI_VERSION_STRING
@@ -63,16 +63,14 @@ endif()
 # ========================
 # QBDI Platform
 # ========================
-set(QBDI_SUPPORTED_PLATFORMS "android" "linux" "windows" "osx" "ios")
+set(QBDI_SUPPORTED_PLATFORMS "android" "linux" "windows" "macos" "ios")
 
-set(QBDI_SUPPORTED_ARCH #    "ARM" # no maintained since 0.7.0
-    #    "AARCH64" # not supported yet
-    "X86" "X86_64")
+set(QBDI_SUPPORTED_ARCH "ARM" "AARCH64" "X86" "X86_64")
 
 set(QBDI_PLATFORM_WINDOWS 0)
 set(QBDI_PLATFORM_LINUX 0)
 set(QBDI_PLATFORM_ANDROID 0)
-set(QBDI_PLATFORM_OSX 0)
+set(QBDI_PLATFORM_MACOS 0)
 set(QBDI_PLATFORM_IOS 0)
 
 set(QBDI_ARCH_X86 0)
@@ -96,7 +94,9 @@ elseif(QBDI_PLATFORM STREQUAL "linux")
 elseif(QBDI_PLATFORM STREQUAL "android")
   set(QBDI_PLATFORM_ANDROID 1)
 elseif(QBDI_PLATFORM STREQUAL "osx")
-  set(QBDI_PLATFORM_OSX 1)
+  set(QBDI_PLATFORM_MACOS 1)
+elseif(QBDI_PLATFORM STREQUAL "macos")
+  set(QBDI_PLATFORM_MACOS 1)
 elseif(QBDI_PLATFORM STREQUAL "ios")
   set(QBDI_PLATFORM_IOS 1)
 else()
@@ -116,10 +116,11 @@ elseif(QBDI_ARCH STREQUAL "ARM")
   set(QBDI_BITS_32 1)
   set(QBDI_LLVM_ARCH "ARM")
   set(QBDI_BASE_ARCH "ARM")
-  #elseif(QBDI_ARCH STREQUAL "AARCH64")
-  #    set(QBDI_ARCH_AARCH64 1)
-  #    set(QBDI_BITS_64 1)
-  #    set(QBDI_LLVM_ARCH "AARCH64")
+elseif(QBDI_ARCH STREQUAL "AARCH64")
+  set(QBDI_ARCH_AARCH64 1)
+  set(QBDI_BITS_64 1)
+  set(QBDI_LLVM_ARCH "AArch64")
+  set(QBDI_BASE_ARCH "AARCH64")
 elseif(QBDI_ARCH STREQUAL "X86")
   set(QBDI_ARCH_X86 1)
   set(QBDI_BITS_32 1)
@@ -137,47 +138,60 @@ else()
   )
 endif()
 
-if(QBDI_PLATFORM_LINUX
-   AND NOT
-       (QBDI_ARCH_X86
-        OR QBDI_ARCH_X86_64
-        OR QBDI_ARCH_ARM))
-  message(
-    FATAL_ERROR
-      "Linux platform is only supported for X86, X86_64 and ARM architectures.")
-endif()
-
 if(QBDI_PLATFORM_WINDOWS AND NOT (QBDI_ARCH_X86 OR QBDI_ARCH_X86_64))
   message(
     FATAL_ERROR
       "Windows platform is only supported for X86 and X86_64 architectures.")
 endif()
 
-if(QBDI_PLATFORM_OSX AND NOT (QBDI_ARCH_X86 OR QBDI_ARCH_X86_64))
+if(QBDI_PLATFORM_MACOS
+   AND NOT
+       (QBDI_ARCH_X86
+        OR QBDI_ARCH_X86_64
+        OR QBDI_ARCH_AARCH64))
   message(
     FATAL_ERROR
       "OSX platform is only supported for X86 and X86_64 architectures.")
 endif()
 
-if(QBDI_PLATFORM_IOS AND NOT QBDI_ARCH_ARM)
-  message(FATAL_ERROR "IOS platform is only supported for ARM architecture.")
-endif()
-
-if(QBDI_PLATFORM_ANDROID
-   AND NOT
-       (QBDI_ARCH_ARM
-        OR QBDI_ARCH_X86
-        OR QBDI_ARCH_X86_64))
+if(QBDI_PLATFORM_IOS AND NOT (QBDI_ARCH_ARM OR QBDI_ARCH_AARCH64))
   message(
     FATAL_ERROR
-      "Android platform is only supported for X86, X86_64 and ARM architecture."
+      "IOS platform is only supported for ARM and AARCH64 architecture.")
+endif()
+
+if(QBDI_PLATFORM_MACOS)
+  if(QBDI_ARCH_X86_64 AND NOT ("${CMAKE_HOST_SYSTEM_PROCESSOR}" STREQUAL
+                               "x86_64"))
+    set(CMAKE_OSX_ARCHITECTURES
+        "x86_64"
+        CACHE STRING "" FORCE)
+    set(CMAKE_CROSSCOMPILING
+        "TRUE"
+        CACHE STRING "" FORCE)
+  elseif(QBDI_ARCH_AARCH64 AND NOT ("${CMAKE_HOST_SYSTEM_PROCESSOR}" STREQUAL
+                                    "arm64"))
+    set(CMAKE_OSX_ARCHITECTURES
+        "arm64"
+        CACHE STRING "" FORCE)
+    set(CMAKE_CROSSCOMPILING
+        "TRUE"
+        CACHE STRING "" FORCE)
+  endif()
+endif()
+
+if(QBDI_PTRAUTH AND NOT ((QBDI_PLATFORM_MACOS OR QBDI_PLATFORM_IOS)
+                         AND QBDI_ARCH_AARCH64))
+  message(
+    FATAL_ERROR
+      "PTRAUTH is only supported for iOS and macOS platforms and AARCH64 architecture."
   )
 endif()
 
 message(STATUS "")
 message(STATUS "== QBDI Target ==")
-message(STATUS "QBDI Platform: ${QBDI_PLATFORM}")
-message(STATUS "QBDI ARCH:     ${QBDI_ARCH}")
-message(STATUS "LLVM ARCH:     ${QBDI_LLVM_ARCH}")
-message(STATUS "Version:       ${QBDI_VERSION_FULL_STRING}")
+message(STATUS "QBDI Platform:      ${QBDI_PLATFORM}")
+message(STATUS "QBDI ARCH:          ${QBDI_ARCH}")
+message(STATUS "LLVM ARCH:          ${QBDI_LLVM_ARCH}")
+message(STATUS "Version:            ${QBDI_VERSION_FULL_STRING}")
 message(STATUS "")

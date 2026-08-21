@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,15 @@
 #ifndef ExecBlockFlags_X86_64_H
 #define ExecBlockFlags_X86_64_H
 
-#include <memory>
-#include <vector>
+#include <stdint.h>
 
 namespace QBDI {
 
-typedef enum : uint8_t { needAVX = 1 << 0, needFPU = 1 << 1 } ExecBlockFlags;
+typedef enum : uint8_t {
+  needAVX = 1 << 0,
+  needFPU = 1 << 1,
+  needFSGS = 1 << 2,
+} ExecBlockFlags;
 
 }
 

@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -101,7 +101,7 @@ typedef struct {
   // Common fields
   OperandType type; /*!< Operand type */
   OperandFlag flag; /*!< Operand flag */
-  rword value;      /*!< Operand value (if immediate), or register Id */
+  sword value;      /*!< Operand value (if immediate), or register Id */
   uint8_t size;     /*!< Operand size (in bytes) */
   // Register specific fields
   uint8_t regOff;      /*!< Sub-register offset in register (in bits) */
@@ -119,6 +119,7 @@ typedef enum {
   _QBDI_EI(ANALYSIS_DISASSEMBLY) = 1 << 1, /*!< Instruction disassembly */
   _QBDI_EI(ANALYSIS_OPERANDS) = 1 << 2,    /*!< Instruction operands analysis */
   _QBDI_EI(ANALYSIS_SYMBOL) = 1 << 3,      /*!< Instruction symbol */
+  _QBDI_EI(ANALYSIS_JIT) = 1 << 4,         /*!< QBDI JIT Information */
 } AnalysisType;
 
 _QBDI_ENABLE_BITMASK_OPERATORS(AnalysisType)
@@ -132,6 +133,7 @@ typedef struct {
                            */
   rword address;          /*!< Instruction address */
   uint32_t instSize;      /*!< Instruction size (in bytes) */
+  CPUMode cpuMode;        /*!< Instruction CPU mode */
   bool affectControlFlow; /*!< true if instruction affects control flow */
   bool isBranch;          /*!< true if instruction acts like a 'jump' */
   bool isCall;            /*!< true if instruction acts like a 'call' */
@@ -139,6 +141,9 @@ typedef struct {
   bool isCompare;         /*!< true if instruction is a comparison */
   bool isPredicable;      /*!< true if instruction contains a predicate
                            * (~is conditional)
+                           */
+  bool isMoveImm;         /*!< true if this instruction is a move immediate
+                           * (including conditional moves) instruction.
                            */
   bool mayLoad;       /*!< true if QBDI detects a load for this instruction */
   bool mayStore;      /*!< true if QBDI detects a store for this instruction */
@@ -153,6 +158,8 @@ typedef struct {
   ConditionType condition; /*!< Condition associated with the instruction */
   bool mayLoad_LLVM;       // mayLoad of 0.7.1
   bool mayStore_LLVM;      // mayStore of 0.7.1
+  uint32_t opcode_LLVM;    // instruction opcode of LLVM (must used the exact
+                           // same version of llvm)
   // ANALYSIS_DISASSEMBLY
   char *disassembly; /*!< Instruction disassembly
                       * (warning: NULL if !ANALYSIS_DISASSEMBLY) */
@@ -168,15 +175,22 @@ typedef struct {
                                    * of an operand provided by the VM.
                                    * (warning: NULL if !ANALYSIS_OPERANDS) */
   // ANALYSIS_SYMBOL
-  const char *symbol;    /*!< Instruction symbol
-                          * (warning: NULL if !ANALYSIS_SYMBOL or not found)
-                          */
-  uint32_t symbolOffset; /*!< Instruction symbol offset */
-  const char *module;    /*!< Instruction module name
-                          * (warning: NULL if !ANALYSIS_SYMBOL or not found)
-                          */
+  const char *symbolName; /*!< Instruction symbol
+                           * (warning: NULL if !ANALYSIS_SYMBOL or not found)
+                           */
+  uint32_t symbolOffset;  /*!< Instruction symbol offset */
+  const char *moduleName; /*!< Instruction module name
+                           * (warning: NULL if !ANALYSIS_SYMBOL or not found)
+                           */
+  // ANALYSIS_JIT
+  rword patchAddress;       /*!< Begin of the instrumentation patch for this
+                             *  instruction */
+  uint16_t patchSize;       /*!< Whole size of the instrumentation patch */
+  uint16_t patchInstOffset; /*!< Offset of the JIT instruction in the path */
+  uint16_t patchInstSize;   /*!< Size of the JIT instruction in the path */
+
   // INTERNAL
-  uint32_t analysisType; /*!< INTERNAL: Instruction analysis type
+  uint16_t analysisType; /*!< INTERNAL: Instruction analysis type
                           * (this should NOT be used)
                           */
 } InstAnalysis;

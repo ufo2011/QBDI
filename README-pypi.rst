@@ -5,11 +5,14 @@ Introduction
     :target: https://qbdi.readthedocs.io/en/stable/?badge=stable
     :alt: Documentation Status
 
-.. image:: https://travis-ci.com/QBDI/QBDI.svg?branch=master
-    :target: https://travis-ci.com/QBDI/QBDI
+.. image:: https://img.shields.io/github/v/release/QBDI/QBDI
+    :target: https://github.com/QBDI/QBDI/releases
 
-.. image:: https://ci.appveyor.com/api/projects/status/s2qvpu8k8yiau647/branch/master?svg=true
-    :target: https://ci.appveyor.com/project/QBDI/qbdi/branch/master
+.. image:: https://img.shields.io/pypi/pyversions/PyQBDI
+    :target: https://pypi.org/project/PyQBDI/
+
+.. image:: https://img.shields.io/pypi/v/PyQBDI
+    :target: https://pypi.org/project/PyQBDI/
 
 QuarkslaB Dynamic binary Instrumentation (QBDI) is a modular, cross-platform and cross-architecture
 DBI framework. It aims to support Linux, macOS, Android, iOS and Windows operating systems running on
@@ -36,18 +39,16 @@ Status
 .. role:: orange
 .. role:: red
 
-=======   ==============================   ======================   =================================
-CPU       Operating Systems                Execution                Memory Access Information
-=======   ==============================   ======================   =================================
-x86-64    Android, Linux, macOS, Windows   :green:`Supported`       :green:`Supported`
-x86       Android, Linux, macOS, Windows   :green:`Supported`       :green:`Supported`
-ARM       Linux, Android, iOS              :orange:`Planned (*)`    :orange:`Planned (*)`
-AArch64   Android                          :orange:`Planned (*)`    :orange:`Planned (*)`
-=======   ==============================   ======================   =================================
+=======   ==============================   ==================   =========================
+CPU       Operating Systems                Execution            Memory Access Information
+=======   ==============================   ==================   =========================
+x86-64    Android, Linux, macOS, Windows   :green:`Supported`   :green:`Supported`
+x86       Android, Linux, macOS, Windows   :green:`Supported`   :green:`Supported`
+ARM       Android, Linux                   :green:`Supported`   :green:`Supported`
+AArch64   Android, Linux, macOS, iOS (*)   :green:`Supported`   :green:`Supported`
+=======   ==============================   ==================   =========================
 
-.. warning::
-
-   The ARM and AArch64 instruction sets are supported but they still need to be integrated along with x86 and x86-64.
+\* iOS support is unstable and need a jailbroken device.
 
 Installation
 ============
@@ -55,7 +56,7 @@ Installation
 Python API (PyQBDI)
 +++++++++++++++++++
 
-PyQBDI is available through PyPI. The wheel package can be either `downloaded <https://pypi.org/project/PyQBDI/#files>`_ or installed with the following command:
+PyQBDI is available through PyPI. The wheel package can be either `downloaded <https://pypi.org/project/PyQBDI/#files>`__ or installed with the following command:
 
     pip install PyQBDI
 
@@ -66,8 +67,18 @@ Devel packages
 
 There is no strict development timeline or scheduled release plan for the QBDI project.
 All the new features and fixes are merged onto the ``dev-next`` branch.
-Devel packages can be downloaded in the artefacts of:
+Devel packages can be downloaded in the artefacts of `GitHub Actions <https://github.com/QBDI/QBDI/actions/workflows/python.yml?query=branch%3Adev-next>`__.
 
-- `Appveyor <https://ci.appveyor.com/project/QBDI/qbdi/branch/dev-next>`_ for Windows packages PyQBDI
-- `Github Actions PyQBDI Linux <https://github.com/QBDI/QBDI/actions?query=workflow%3A%22PyQBDI+Linux+package%22+branch%3Adev-next>`_ for Linux PyQBDI
-- `Github Actions PyQBDI OSX <https://github.com/QBDI/QBDI/actions?query=workflow%3A%22PyQBDI+OSX+package%22+branch%3Adev-next>`_ for OSX PyQBDI
+Compilation
+===========
+
+The PyQDBI library (apart from the wheel package) can be built by solely passing the **'-DQBDI_TOOLS_PYQBDI=ON'** option to the CMake build system.
+
+However, if you want to build the wheel package, you can run these commands::
+
+    git clone https://github.com/QBDI/QBDI.git
+    python -m pip install --upgrade pip
+    python -m pip install setuptools wheel build
+    python -m build -w
+
+A 32-bit version of Python is mandatory for the X86 architecture whereas a 64-bit one is required for the X86-64 architecture.

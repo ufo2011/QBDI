@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "VM.h"
+#include "QBDI/VM.h"
 #include "ExecBlock/Context.h"
 
 #include "TestSetup/InMemoryAssembler.h"

@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "Patch/ARM/InstrRules_ARM.h"
+#include <stddef.h>
+#include <stdlib.h>
+
+#include "ExecBlock/Context.h"
+#include "Patch/ARM/Layer2_ARM.h"
+#include "Patch/ARM/PatchGenerator_ARM.h"
+#include "Patch/ARM/RelocatableInst_ARM.h"
+#include "Patch/InstrRules.h"
+#include "Patch/Patch.h"
+#include "Patch/PatchGenerator.h"
+#include "Patch/RelocatableInst.h"
+#include "Patch/Types.h"
+#include "Utility/LogSys.h"
 
 namespace QBDI {
 
@@ -23,20 +35,37 @@ namespace QBDI {
  * instrumentation code trigger a break to host. It receive in argument a
  * temporary reg which will be used for computations then finally restored.
  */
-RelocatableInst::SharedPtrVec getBreakToHost(Reg temp) {
-  RelocatableInst::SharedPtrVec breakToHost;
+RelocatableInst::UniquePtrVec getBreakToHost(Reg temp, const Patch &patch,
+                                             bool restore) {
 
-  // Use the temporary register to compute PC + 16 which is the address which
-  // will follow this patch and where the execution needs to be resumed
-  breakToHost.push_back(HostPCRel(ldri12(temp, Reg(REG_PC), 0), 2, 16));
-  // Set the selector to this address so the execution can be resumed when the
-  // exec block will be reexecuted
-  append(breakToHost,
-         SaveReg(temp, Offset(offsetof(Context, hostState.selector))));
+  QBDI_REQUIRE_ABORT(restore, "ARM don't have a temporary register {}", patch);
+
+  // compute offset address
+  unsigned int patchSize = RelativeAddress(temp, 0xff).getSize(*patch.llvmcpu);
+
+  RelocatableInst::UniquePtrVec tmpVec;
+  append(tmpVec, SaveReg(temp, Offset(offsetof(Context, hostState.selector)))
+                     .genReloc(*patch.llvmcpu));
+  append(tmpVec, LoadReg(temp, Offset(temp)).genReloc(*patch.llvmcpu));
+  append(tmpVec, JmpEpilogue().genReloc(*patch.llvmcpu));
+
+  patchSize += getUniquePtrVecSize(tmpVec, *patch.llvmcpu);
+  if (patch.metadata.cpuMode == CPUMode::Thumb) {
+    patchSize += 1;
+  }
+
+  RelocatableInst::UniquePtrVec breakToHost;
+
+  // set temp to the address after JmpEpilogue
+  breakToHost.push_back(RelativeAddress::unique(temp, patchSize));
+
+  // set address in hostState.selector
   // Restore the temporary register
-  append(breakToHost, LoadReg(temp, Offset(temp)));
-  // Jump to the epilogue to break to the host
-  append(breakToHost, JmpEpilogue());
+  // JumpEpilogue
+  append(breakToHost, std::move(tmpVec));
+
+  // add target when callback return CONTINUE
+  append(breakToHost, TargetPrologue().genReloc(patch));
 
   return breakToHost;
 }

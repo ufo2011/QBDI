@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,14 +19,12 @@
 #define ENGINE_H
 
 #include <cstdlib>
-#include <map>
 #include <memory>
+#include <optional>
+#include <stdint.h>
+#include <string>
 #include <utility>
 #include <vector>
-
-#if !defined(__APPLE__)
-#include <malloc.h>
-#endif
 
 #include "QBDI/Callback.h"
 #include "QBDI/InstAnalysis.h"
@@ -34,26 +32,15 @@
 #include "QBDI/Range.h"
 #include "QBDI/State.h"
 
-namespace llvm {
-class MCAsmInfo;
-class MCCodeEmitter;
-class MCContext;
-class MCInstrInfo;
-class MCObjectFileInfo;
-class MCRegisterInfo;
-class MCSubtargetInfo;
-} // namespace llvm
-
 namespace QBDI {
 
-class Assembly;
+class LLVMCPUs;
 class ExecBlock;
 class ExecBlockManager;
 class ExecBroker;
-class PatchRule;
 class InstrRule;
 class Patch;
-class InstMetadata;
+class PatchRuleAssembly;
 struct SeqLoc;
 
 struct CallbackRegistration {
@@ -64,22 +51,12 @@ struct CallbackRegistration {
 
 class Engine {
 private:
-  std::unique_ptr<llvm::MCAsmInfo> MAI;
-  std::unique_ptr<llvm::MCCodeEmitter> MCE;
-  std::unique_ptr<llvm::MCContext> MCTX;
-  std::unique_ptr<llvm::MCInstrInfo> MCII;
-  std::unique_ptr<llvm::MCObjectFileInfo> MOFI;
-  std::unique_ptr<llvm::MCRegisterInfo> MRI;
-  std::unique_ptr<llvm::MCSubtargetInfo> MSTI;
-  std::string tripleName;
-  std::string cpu;
-  std::vector<std::string> mattrs;
   VMInstanceRef vminstance;
 
-  std::unique_ptr<Assembly> assembly;
+  std::unique_ptr<LLVMCPUs> llvmCPUs;
   std::unique_ptr<ExecBlockManager> blockManager;
-  std::unique_ptr<ExecBroker> execBroker;
-  std::vector<PatchRule> patchRules;
+  ExecBroker *execBroker;
+  std::unique_ptr<PatchRuleAssembly> patchRuleAssembly;
   std::vector<std::pair<uint32_t, std::unique_ptr<InstrRule>>> instrRules;
   uint32_t instrRulesCounter;
   std::vector<std::pair<uint32_t, CallbackRegistration>> vmCallbacks;
@@ -89,13 +66,10 @@ private:
   GPRState *curGPRState;
   FPRState *curFPRState;
   ExecBlock *curExecBlock;
+  CPUMode curCPUMode;
   Options options;
   VMEvent eventMask;
   bool running;
-
-  void init();
-  void reinit(const std::string &cpu, const std::vector<std::string> &mattrs,
-              Options opts);
 
   std::vector<Patch> patch(rword start);
 
@@ -114,6 +88,7 @@ public:
    *
    * @param[in] cpu        The name of the CPU
    * @param[in] mattrs     A list of additional attributes
+   * @param[in] opts       The options to enable
    * @param[in] vminstance Pointer to public engine interface
    */
   Engine(const std::string &cpu = "",
@@ -243,6 +218,14 @@ public:
    */
   uint32_t addInstrRule(std::unique_ptr<InstrRule> &&rule);
 
+  /*! Get a registered instrumentation rule from the engine.
+   *
+   * @param[in] id  The id of the rule to get
+   *
+   * @return The instrumentation rule if available, else nullptr
+   */
+  InstrRule *getInstrRule(uint32_t id);
+
   /*! Register a callback event for a specific VM event.
    *
    * @param[in] mask A mask of VM event type which will trigger the callback.
@@ -253,6 +236,16 @@ public:
    * VMError::INVALID_EVENTID in case of failure).
    */
   uint32_t addVMEventCB(VMEvent mask, VMCallback cbk, void *data);
+
+  /*! Set a callback event for a specific VM event.
+   *
+   * @param[in] id   The id of the VMCallback to set.
+   * @param[in] cbk  A function pointer to the callback.
+   * @param[in] data User defined data passed to the callback.
+   *
+   * @return True if the id is valid and value has been set.
+   */
+  bool setVMEventCB(uint32_t id, VMCallback cbk, void *data);
 
   /*! Remove an instrumentation.
    *
@@ -297,6 +290,18 @@ public:
    */
   const InstAnalysis *getInstAnalysis(rword address, AnalysisType type) const;
 
+  /*! Return ExecBlock and InstID from a Jitted address.
+   * This function help to convert an address of a patched
+   * (inside a CodeSection of an ExecBlock) to the address of the instruction
+   * for which this patch was jitted.
+   *
+   * @param[in] address  Address of a Jitted instruction
+   *
+   * @return The ExecBlock and the InstId of the Jitted instruction if any
+   */
+  std::optional<std::pair<const ExecBlock *, uint16_t>>
+  getPatchInfoOfJit(rword address) const;
+
   /*! Clear a specific address range from the translation cache.
    *
    * @param[in] start Start of the address range to clear from the cache.
@@ -314,6 +319,22 @@ public:
   /*! Clear the entire translation cache.
    */
   void clearAllCache();
+
+  /*! Get the number of ExecBlock in the cache. Each block uses 2 memory pages
+   * and some heap allocations.
+   *
+   * @return  The number of ExecBlock in the cache.
+   */
+  uint32_t getNbExecBlock() const;
+
+  /*! Reduce the cache to X ExecBlock. Note that this will try to purge the
+   * oldest ExecBlock first, but the block may be recreate if needed by followed
+   * execution.
+   *
+   * @param[in] nb The number of BasicBlock that should remains in the cache
+   *               after call.
+   */
+  void reduceCacheTo(uint32_t nb);
 };
 
 } // namespace QBDI

@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@
 #include "QBDI/Callback.h"
 
 namespace QBDI {
-
+class Patch;
 class PatchGenerator;
 class RelocatableInst;
 
@@ -41,7 +41,8 @@ class RelocatableInst;
 std::vector<std::unique_ptr<PatchGenerator>>
 getCallbackGenerator(InstCallback cbk, void *data);
 
-std::vector<std::unique_ptr<RelocatableInst>> getBreakToHost(Reg temp);
+std::vector<std::unique_ptr<RelocatableInst>>
+getBreakToHost(Reg temp, const Patch &patch, bool restore);
 } // namespace QBDI
 
 #endif

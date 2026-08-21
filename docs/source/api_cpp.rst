@@ -31,9 +31,13 @@ State management
 
 .. doxygenfunction:: QBDI::VM::getFPRState
 
+.. doxygenfunction:: QBDI::VM::getErrno
+
 .. doxygenfunction:: QBDI::VM::setGPRState
 
 .. doxygenfunction:: QBDI::VM::setFPRState
+
+.. doxygenfunction:: QBDI::VM::setErrno
 
 .. _instrumentation-range-cpp:
 
@@ -70,31 +74,51 @@ Callback management
 InstCallback
 ^^^^^^^^^^^^
 
-.. doxygenfunction:: QBDI::VM::addCodeCB
+.. doxygenfunction:: QBDI::VM::addCodeCB(InstPosition pos, InstCallback cbk, void*data, int priority)
+.. doxygenfunction:: QBDI::VM::addCodeCB(InstPosition pos, InstCbLambda &&cbk, int priority)
+.. doxygenfunction:: QBDI::VM::addCodeCB(InstPosition pos, const InstCbLambda &cbk, int priority)
 
-.. doxygenfunction:: QBDI::VM::addCodeAddrCB
+.. doxygenfunction:: QBDI::VM::addCodeAddrCB(rword address, InstPosition pos, InstCallback cbk, void*data, int priority)
+.. doxygenfunction:: QBDI::VM::addCodeAddrCB(rword address, InstPosition pos, InstCbLambda &&cbk, int priority)
+.. doxygenfunction:: QBDI::VM::addCodeAddrCB(rword address, InstPosition pos, const InstCbLambda &cbk, int priority)
 
-.. doxygenfunction:: QBDI::VM::addCodeRangeCB
+.. doxygenfunction:: QBDI::VM::addCodeRangeCB(rword start, rword end, InstPosition pos, InstCallback cbk, void*data, int priority)
+.. doxygenfunction:: QBDI::VM::addCodeRangeCB(rword start, rword end, InstPosition pos, InstCbLambda &&cbk, int priority)
+.. doxygenfunction:: QBDI::VM::addCodeRangeCB(rword start, rword end, InstPosition pos, const InstCbLambda &cbk, int priority)
 
-.. doxygenfunction:: QBDI::VM::addMnemonicCB
+.. doxygenfunction:: QBDI::VM::addMnemonicCB(const char*mnemonic, InstPosition pos, InstCallback cbk, void*data, int priority)
+.. doxygenfunction:: QBDI::VM::addMnemonicCB(const char*mnemonic, InstPosition pos, InstCbLambda &&cbk, int priority)
+.. doxygenfunction:: QBDI::VM::addMnemonicCB(const char*mnemonic, InstPosition pos, const InstCbLambda &cbk, int priority)
+
 
 .. _vmcallback-management-cpp:
 
 VMEvent
 ^^^^^^^
 
-.. doxygenfunction:: QBDI::VM::addVMEventCB
+.. doxygenfunction:: QBDI::VM::addVMEventCB(VMEvent mask, VMCallback cbk, void*data)
+.. doxygenfunction:: QBDI::VM::addVMEventCB(VMEvent mask, VMCbLambda &&cbk)
+.. doxygenfunction:: QBDI::VM::addVMEventCB(VMEvent mask, const VMCbLambda &cbk)
 
 .. _memorycallback-management-cpp:
 
 MemoryAccess
 ^^^^^^^^^^^^
 
-.. doxygenfunction:: QBDI::VM::addMemAccessCB
+.. doxygenfunction:: QBDI::VM::addMemAccessCB(MemoryAccessType type, InstCallback cbk, void*data, int priority)
+.. doxygenfunction:: QBDI::VM::addMemAccessCB(MemoryAccessType type, InstCbLambda &&cbk, int priority)
+.. doxygenfunction:: QBDI::VM::addMemAccessCB(MemoryAccessType type, const InstCbLambda &cbk, int priority)
 
-.. doxygenfunction:: QBDI::VM::addMemAddrCB
 
-.. doxygenfunction:: QBDI::VM::addMemRangeCB
+.. doxygenfunction:: QBDI::VM::addMemAddrCB(rword address, MemoryAccessType type, InstCallback cbk, void*data)
+.. doxygenfunction:: QBDI::VM::addMemAddrCB(rword address, MemoryAccessType type, InstCbLambda &&cbk)
+.. doxygenfunction:: QBDI::VM::addMemAddrCB(rword address, MemoryAccessType type, const InstCbLambda &cbk)
+
+
+.. doxygenfunction:: QBDI::VM::addMemRangeCB(rword start, rword end, MemoryAccessType type, InstCallback cbk, void*data)
+.. doxygenfunction:: QBDI::VM::addMemRangeCB(rword start, rword end, MemoryAccessType type, InstCbLambda &&cbk)
+.. doxygenfunction:: QBDI::VM::addMemRangeCB(rword start, rword end, MemoryAccessType type, const InstCbLambda &cbk)
+
 
 .. _instrrulecallback-management-cpp:
 
@@ -102,10 +126,17 @@ InstrRuleCallback
 ^^^^^^^^^^^^^^^^^
 
 .. doxygenfunction:: QBDI::VM::addInstrRule(InstrRuleCallback cbk, AnalysisType type, void* data)
+.. doxygenfunction:: QBDI::VM::addInstrRule(InstrRuleCbLambda &&cbk, AnalysisType type)
+.. doxygenfunction:: QBDI::VM::addInstrRule(const InstrRuleCbLambda &cbk, AnalysisType type)
 
 .. doxygenfunction:: QBDI::VM::addInstrRuleRange(rword start, rword end, InstrRuleCallback cbk, AnalysisType type, void* data)
+.. doxygenfunction:: QBDI::VM::addInstrRuleRange(rword start, rword end, InstrRuleCbLambda &&cbk, AnalysisType type)
+.. doxygenfunction:: QBDI::VM::addInstrRuleRange(rword start, rword end, const InstrRuleCbLambda &cbk, AnalysisType type)
 
-.. doxygenfunction:: QBDI::VM::addInstrRuleRangeSet
+.. doxygenfunction:: QBDI::VM::addInstrRuleRangeSet(RangeSet<rword> range, InstrRuleCallback cbk, AnalysisType type, void*data)
+.. doxygenfunction:: QBDI::VM::addInstrRuleRangeSet(RangeSet<rword> range, InstrRuleCbLambda &&cbk, AnalysisType type)
+.. doxygenfunction:: QBDI::VM::addInstrRuleRangeSet(RangeSet<rword> range, const InstrRuleCbLambda &cbk, AnalysisType type)
+
 
 Removal
 ^^^^^^^
@@ -125,6 +156,12 @@ Run
 
 .. doxygenfunction:: QBDI::VM::callV
 
+.. doxygenfunction:: QBDI::VM::switchStackAndCall
+
+.. doxygenfunction:: QBDI::VM::switchStackAndCallA
+
+.. doxygenfunction:: QBDI::VM::switchStackAndCallV
+
 .. _instanalysis-getter-cpp:
 
 InstAnalysis
@@ -133,6 +170,8 @@ InstAnalysis
 .. doxygenfunction:: QBDI::VM::getInstAnalysis
 
 .. doxygenfunction:: QBDI::VM::getCachedInstAnalysis
+
+.. doxygenfunction:: QBDI::VM::getJITInstAnalysis
 
 .. _memaccess-getter-cpp:
 
@@ -154,6 +193,10 @@ Cache management
 
 .. doxygenfunction:: QBDI::VM::clearAllCache
 
+.. doxygenfunction:: QBDI::VM::getNbExecBlock
+
+.. doxygenfunction:: QBDI::VM::reduceCacheTo
+
 .. _register-state-cpp:
 
 Register state
@@ -163,8 +206,8 @@ Register state
 
     An integer of the size of a register
 
-    - uint32_t for X86
-    - uint64_t for X86_64
+    - uint32_t for X86 and ARM
+    - uint64_t for X86_64 and AARCH64
 
 .. cpp:struct:: QBDI::GPRState
 
@@ -172,16 +215,30 @@ Register state
 
     For X86 architecture:
 
-    .. include:: ../../include/QBDI/State.h
+    .. include:: ../../include/QBDI/arch/X86/State.h
        :start-after: SPHINX_X86_GPRSTATE_BEGIN
        :end-before: // SPHINX_X86_GPRSTATE_END
        :code:
 
     For X86_64 architecture:
 
-    .. include:: ../../include/QBDI/State.h
+    .. include:: ../../include/QBDI/arch/X86_64/State.h
        :start-after: SPHINX_X86_64_GPRSTATE_BEGIN
        :end-before: // SPHINX_X86_64_GPRSTATE_END
+       :code:
+
+    For ARM architecture:
+
+    .. include:: ../../include/QBDI/arch/ARM/State.h
+       :start-after: SPHINX_ARM_GPRSTATE_BEGIN
+       :end-before: // SPHINX_ARM_GPRSTATE_END
+       :code:
+
+    For AARCH64 architecture:
+
+    .. include:: ../../include/QBDI/arch/AARCH64/State.h
+       :start-after: SPHINX_AARCH64_GPRSTATE_BEGIN
+       :end-before: // SPHINX_AARCH64_GPRSTATE_END
        :code:
 
 .. cpp:struct:: QBDI::FPRState
@@ -190,16 +247,30 @@ Register state
 
     For X86 architecture:
 
-    .. include:: ../../include/QBDI/State.h
+    .. include:: ../../include/QBDI/arch/X86/State.h
        :start-after: SPHINX_X86_FPRSTATE_BEGIN
        :end-before: // SPHINX_X86_FPRSTATE_END
        :code:
 
     For X86_64 architecture:
 
-    .. include:: ../../include/QBDI/State.h
+    .. include:: ../../include/QBDI/arch/X86_64/State.h
        :start-after: SPHINX_X86_64_FPRSTATE_BEGIN
        :end-before: // SPHINX_X86_64_FPRSTATE_END
+       :code:
+
+    For ARM architecture:
+
+    .. include:: ../../include/QBDI/arch/ARM/State.h
+       :start-after: SPHINX_ARM_FPRSTATE_BEGIN
+       :end-before: // SPHINX_ARM_FPRSTATE_END
+       :code:
+
+    For AARCH64 architecture:
+
+    .. include:: ../../include/QBDI/arch/AARCH64/State.h
+       :start-after: SPHINX_AARCH64_FPRSTATE_BEGIN
+       :end-before: // SPHINX_AARCH64_FPRSTATE_END
        :code:
 
 .. doxygenstruct:: QBDI::MMSTReg
@@ -233,15 +304,22 @@ Callback
 
 .. doxygentypedef:: QBDI::InstCallback
 
+.. doxygentypedef:: QBDI::InstCbLambda
+
 .. doxygentypedef:: QBDI::VMCallback
+
+.. doxygentypedef:: QBDI::VMCbLambda
 
 .. doxygentypedef:: QBDI::InstrRuleCallback
 
+.. doxygentypedef:: QBDI::InstrRuleCbLambda
 
 .. doxygenstruct:: QBDI::InstrRuleDataCBK
     :members:
 
 .. doxygenenum:: QBDI::InstPosition
+
+.. doxygenenum:: QBDI::CallbackPriority
 
 .. doxygenenum:: QBDI::VMAction
 
@@ -323,7 +401,87 @@ Exploration
 Other globals
 -------------
 
-.. doxygenenum:: QBDI::Options
+.. cpp:enum:: QBDI::Options
+
+  Note: some value are available only for some architecture
+
+  Values for all architecture :
+
+  .. cpp:enumerator:: NO_OPT
+
+      Default Value
+
+  .. cpp:enumerator:: OPT_DISABLE_FPR
+
+      Disable all operation on FPU (SSE, AVX, SIMD). May break the execution if the target use the FPU
+
+  .. cpp:enumerator:: OPT_DISABLE_OPTIONAL_FPR
+
+      Disable context switch optimisation when the target execblock doesn't used FPR
+
+  .. cpp:enumerator:: OPT_DISABLE_MEMORYACCESS_VALUE
+
+      Don't load memory access value
+
+  .. cpp:enumerator:: OPT_DISABLE_ERRNO_BACKUP
+
+      Don't save and restore errno
+
+  Values for AARCH64 and ARM only :
+
+  .. cpp:enumerator:: OPT_DISABLE_LOCAL_MONITOR
+
+      Disable the local monitor for instruction like strex
+
+  Values for AARCH64 only :
+
+  .. cpp:enumerator:: OPT_BYPASS_PAUTH
+
+      Disable pointeur authentication
+
+  .. cpp:enumerator:: OPT_ENABLE_BTI
+
+      Enable BTI on instrumented code
+
+  Values for ARM only :
+
+  .. cpp:enumerator:: OPT_DISABLE_D16_D31
+
+      Disable the used of D16-D31 register
+
+  .. cpp:enumerator:: OPT_ARMv4
+
+      Change between ARM and Thumb as an ARMv4 CPU
+
+  .. cpp:enumerator:: OPT_ARMv5T_6
+
+      Change between ARM and Thumb as an ARMv5T or ARMv6 CPU
+
+  .. cpp:enumerator:: OPT_ARMv7
+
+      Change between ARM and Thumb as an ARMv7 CPU (default)
+
+  .. cpp:enumerator:: OPT_ARM_MASK
+
+      When apply :cpp:enumerator:`OPT_ARMv4`,
+      :cpp:enumerator:`OPT_ARMv5T_6` or
+      :cpp:enumerator:`OPT_ARMv7`, this mask must be clear.
+
+  Values for X86 and X86_64 only :
+
+  .. cpp:enumerator:: OPT_ATT_SYNTAX
+
+      Used the AT&T syntax for instruction disassembly
+
+  Values for X86_64 only :
+
+  .. cpp:enumerator:: OPT_ENABLE_FS_GS
+
+      Enable Backup/Restore of FS/GS  segment. This option uses the
+      instructions (RD|WR)(FS|GS)BASE that must be supported by the operating
+      system
+
+
 
 .. doxygenenum:: QBDI::VMError
 
@@ -340,9 +498,13 @@ Log
 
 .. doxygenenum:: QBDI::LogPriority
 
-.. doxygenfunction:: QBDI::setLogOutput
+.. doxygenfunction:: QBDI::setLogFile
 
-.. doxygenfunction:: QBDI::addLogFilter
+.. doxygenfunction:: QBDI::setLogPriority
+
+.. doxygenfunction:: QBDI::setLogConsole
+
+.. doxygenfunction:: QBDI::setLogDefault
 
 Range
 +++++

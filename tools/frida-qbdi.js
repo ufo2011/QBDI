@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,13 +22,13 @@
  * $ frida -n Twitter -l frida-qbdi.js
  *
  */
-var QBDI_MAJOR = 0;
-var QBDI_MINOR = 8;
-var QBDI_PATCH = 1;
+export var QBDI_MAJOR = 0;
+export var QBDI_MINOR = 12;
+export var QBDI_PATCH = 1;
 /**
  * Minimum version of QBDI to use Frida bindings
  */
-var QBDI_MINIMUM_VERSION = (QBDI_MAJOR << 8) | (QBDI_MINOR << 4) | QBDI_PATCH;
+export var QBDI_MINIMUM_VERSION = (QBDI_MAJOR << 16) | (QBDI_MINOR << 8) | QBDI_PATCH;
 
 if (typeof Duktape === 'object') {
     // Warn about duktape runtime (except on iOS...)
@@ -41,7 +41,7 @@ if (typeof Duktape === 'object') {
 // Provide a generic and "safe" (no exceptions if symbol is not found) way to load
 // a library and bind/create a native function
 class Binder {
-    constructor() {}
+    constructor() { }
 
     findLibrary(lib, paths) {
         if (lib === undefined) {
@@ -60,7 +60,7 @@ class Binder {
                     fp.close();
                     found = true;
                     break;
-                } catch(e) {
+                } catch (e) {
                     continue;
                 }
             }
@@ -99,8 +99,8 @@ class Binder {
     }
 
     bind(name, ret, args) {
-        return this.safeNativeFunction(function() {
-            return Module.findExportByName(null, name);
+        return this.safeNativeFunction(function () {
+            return Module.findGlobalExportByName(name);
         }, ret, args);
     }
 }
@@ -121,6 +121,8 @@ class QBDIBinder extends Binder {
     // paths where QBDI library may be
     get QBDI_PATHS() {
         return [
+            //palera1n path
+            '/var/jb/usr/lib',
             // UNIX default paths
             '/usr/lib/',
             '/usr/local/lib/',
@@ -136,8 +138,8 @@ class QBDIBinder extends Binder {
 
     bind(name, ret, args) {
         var libpath = this.QBDI_LIB;
-        return this.safeNativeFunction(function() {
-            return Module.findExportByName(libpath, name);
+        return this.safeNativeFunction(function () {
+            return Process.getModuleByName(libpath).findExportByName(name);
         }, ret, args);
     }
 
@@ -162,8 +164,8 @@ var System_C = Object.freeze({
 
 
 var System = Object.freeze({
-    dlerror: function() {
-        if (Process.platform === "windows"){
+    dlerror: function () {
+        if (Process.platform === "windows") {
             var val = System_C.GetLastError();
             if (val === undefined) {
                 return undefined;
@@ -171,19 +173,19 @@ var System = Object.freeze({
             return val.toString();
         }
         var strPtr = System_C.dlerror();
-        return Memory.readCString(strPtr);
+        return strPtr.readCString();
 
     },
-    dlopen: function(library) {
+    dlopen: function (library) {
         var RTLD_LOCAL = 0x0;
         var RTLD_LAZY = 0x1;
         var path = Memory.allocUtf8String(library);
-        if (Process.platform === "windows"){
+        if (Process.platform === "windows") {
             return System_C.LoadLibraryEx(path, 0, 0);
         }
         return System_C.dlopen(path, RTLD_LOCAL | RTLD_LAZY);
     },
-    free: function(ptr) {
+    free: function (ptr) {
         System_C.free(ptr);
     }
 });
@@ -199,18 +201,21 @@ var QBDI_LIB_FULLPATH = _qbdibinder.load();
 /**
  * An alias to Frida uint type with the size of general registers (**uint64** or **uint32**)
  */
-var rword = Process.pointerSize === 8 ? 'uint64' : 'uint32';
+export var rword = Process.pointerSize === 8 ? 'uint64' : 'uint32';
+export var sword = Process.pointerSize === 8 ? 'int64' : 'int32';
 
-Memory.readRword = Process.pointerSize === 8 ? Memory.readU64 : Memory.readU32;
+NativePointer.prototype.readRword = Process.pointerSize === 8 ? NativePointer.prototype.readU64 : NativePointer.prototype.readU32;
+NativePointer.prototype.readSword = Process.pointerSize === 8 ? NativePointer.prototype.readS64 : NativePointer.prototype.readS32;
 
-Memory.writeRword = Process.pointerSize === 8 ? Memory.writeU64 : Memory.writeU32;
+NativePointer.prototype.writeRword = Process.pointerSize === 8 ? NativePointer.prototype.writeU64 : NativePointer.prototype.writeU32;
+NativePointer.prototype.writeSword = Process.pointerSize === 8 ? NativePointer.prototype.writeS64 : NativePointer.prototype.writeS32;
 
 // Convert a number to its register-sized representation
 
 /**
  * Convert a NativePointer into a type with the size of a register (``Number`` or ``UInt64``).
  */
-NativePointer.prototype.toRword = function() {
+NativePointer.prototype.toRword = function () {
     // Nothing better really ?
     if (Process.pointerSize === 8) {
         return uint64("0x" + this.toString(16));
@@ -222,9 +227,8 @@ NativePointer.prototype.toRword = function() {
  * Convert a number into a type with the size of a register (``Number`` or ``UInt64``).
  * Can't be used for numbers > 32 bits, would cause weird results due to IEEE-754.
  */
-Number.prototype.toRword = function() {
-    if (this > 0x100000000)
-    {
+Number.prototype.toRword = function () {
+    if (this > 0x100000000) {
         throw new TypeError('For integer > 32 bits, please use Frida uint64 type.');
     }
     if (Process.pointerSize === 8) {
@@ -237,13 +241,17 @@ Number.prototype.toRword = function() {
  * An identity function (returning the same ``UInt64`` object).
  * It exists only to provide a unified **toRword** interface.
  */
-UInt64.prototype.toRword = function() {
+UInt64.prototype.toRword = function () {
+    return this;
+}
+
+Int64.prototype.toSword = function () {
     return this;
 }
 
 // Some helpers
 
-String.prototype.leftPad = function(paddingValue, paddingLength) {
+String.prototype.leftPad = function (paddingValue, paddingLength) {
     paddingLength = paddingLength || paddingValue.length;
     if (paddingLength < this.length) {
         return String(this);
@@ -254,7 +262,7 @@ String.prototype.leftPad = function(paddingValue, paddingLength) {
 /**
  * Convert a String into a type with the size of a register (``Number`` or ``UInt64``).
  */
-String.prototype.toRword = function() {
+String.prototype.toRword = function () {
     return ptr(this).toRword()
 };
 
@@ -265,7 +273,7 @@ String.prototype.toRword = function() {
  *
  * @return pointer value as padded string (ex: "0x00004242")
  */
-function hexPointer(ptr) {
+export function hexPointer(ptr) {
     return ptr.toString(16).leftPad("0000000000000000", Process.pointerSize * 2);
 }
 
@@ -287,26 +295,31 @@ var QBDI_C = Object.freeze({
     removeAllInstrumentedRanges: _qbdibinder.bind('qbdi_removeAllInstrumentedRanges', 'void', ['pointer']),
     run: _qbdibinder.bind('qbdi_run', 'uchar', ['pointer', rword, rword]),
     call: _qbdibinder.bind('qbdi_call', 'uchar', ['pointer', 'pointer', rword, 'uint32',
-                           rword, rword, rword, rword, rword, rword, rword, rword, rword, rword]),
+        '...', rword, rword, rword, rword, rword, rword, rword, rword, rword, rword]),
+    switchStackAndCall: _qbdibinder.bind('qbdi_switchStackAndCall', 'uchar', ['pointer', 'pointer', rword, 'uint32', 'uint32',
+        '...', rword, rword, rword, rword, rword, rword, rword, rword, rword, rword]),
     getGPRState: _qbdibinder.bind('qbdi_getGPRState', 'pointer', ['pointer']),
     getFPRState: _qbdibinder.bind('qbdi_getFPRState', 'pointer', ['pointer']),
+    getErrno: _qbdibinder.bind('qbdi_getErrno', 'uint32', ['pointer']),
     setGPRState: _qbdibinder.bind('qbdi_setGPRState', 'void', ['pointer', 'pointer']),
     setFPRState: _qbdibinder.bind('qbdi_setFPRState', 'void', ['pointer', 'pointer']),
-    addMnemonicCB: _qbdibinder.bind('qbdi_addMnemonicCB', 'uint32', ['pointer', 'pointer', 'uint32', 'pointer', 'pointer']),
-    addMemAccessCB: _qbdibinder.bind('qbdi_addMemAccessCB', 'uint32', ['pointer', 'uint32', 'pointer', 'pointer']),
+    setErrno: _qbdibinder.bind('qbdi_setErrno', 'void', ['pointer', 'uint32']),
+    addMnemonicCB: _qbdibinder.bind('qbdi_addMnemonicCB', 'uint32', ['pointer', 'pointer', 'uint32', 'pointer', 'pointer', 'int32']),
+    addMemAccessCB: _qbdibinder.bind('qbdi_addMemAccessCB', 'uint32', ['pointer', 'uint32', 'pointer', 'pointer', 'int32']),
     addInstrRule: _qbdibinder.bind('qbdi_addInstrRule', 'uint32', ['pointer', 'pointer', 'uint32', 'pointer']),
     addInstrRuleRange: _qbdibinder.bind('qbdi_addInstrRuleRange', 'uint32', ['pointer', rword, rword, 'pointer', 'uint32', 'pointer']),
-    addInstrRuleData: _qbdibinder.bind('qbdi_addInstrRuleData', 'void', ['pointer', 'uint32', 'pointer', 'pointer']),
+    addInstrRuleData: _qbdibinder.bind('qbdi_addInstrRuleData', 'void', ['pointer', 'uint32', 'pointer', 'pointer', 'int32']),
     addMemAddrCB: _qbdibinder.bind('qbdi_addMemAddrCB', 'uint32', ['pointer', rword, 'uint32', 'pointer', 'pointer']),
     addMemRangeCB: _qbdibinder.bind('qbdi_addMemRangeCB', 'uint32', ['pointer', rword, rword, 'uint32', 'pointer', 'pointer']),
-    addCodeCB: _qbdibinder.bind('qbdi_addCodeCB', 'uint32', ['pointer', 'uint32', 'pointer', 'pointer']),
-    addCodeAddrCB: _qbdibinder.bind('qbdi_addCodeAddrCB', 'uint32', ['pointer', rword, 'uint32', 'pointer', 'pointer']),
-    addCodeRangeCB: _qbdibinder.bind('qbdi_addCodeRangeCB', 'uint32', ['pointer', rword, rword, 'uint32', 'pointer', 'pointer']),
+    addCodeCB: _qbdibinder.bind('qbdi_addCodeCB', 'uint32', ['pointer', 'uint32', 'pointer', 'pointer', 'int32']),
+    addCodeAddrCB: _qbdibinder.bind('qbdi_addCodeAddrCB', 'uint32', ['pointer', rword, 'uint32', 'pointer', 'pointer', 'int32']),
+    addCodeRangeCB: _qbdibinder.bind('qbdi_addCodeRangeCB', 'uint32', ['pointer', rword, rword, 'uint32', 'pointer', 'pointer', 'int32']),
     addVMEventCB: _qbdibinder.bind('qbdi_addVMEventCB', 'uint32', ['pointer', 'uint32', 'pointer', 'pointer']),
     deleteInstrumentation: _qbdibinder.bind('qbdi_deleteInstrumentation', 'uchar', ['pointer', 'uint32']),
     deleteAllInstrumentations: _qbdibinder.bind('qbdi_deleteAllInstrumentations', 'void', ['pointer']),
     getInstAnalysis: _qbdibinder.bind('qbdi_getInstAnalysis', 'pointer', ['pointer', 'uint32']),
     getCachedInstAnalysis: _qbdibinder.bind('qbdi_getCachedInstAnalysis', 'pointer', ['pointer', rword, 'uint32']),
+    getJITInstAnalysis: _qbdibinder.bind('qbdi_getJITInstAnalysis', 'pointer', ['pointer', rword, 'uint32']),
     recordMemoryAccess: _qbdibinder.bind('qbdi_recordMemoryAccess', 'uchar', ['pointer', 'uint32']),
     getInstMemoryAccess: _qbdibinder.bind('qbdi_getInstMemoryAccess', 'pointer', ['pointer', 'pointer']),
     getBBMemoryAccess: _qbdibinder.bind('qbdi_getBBMemoryAccess', 'pointer', ['pointer', 'pointer']),
@@ -315,7 +328,7 @@ var QBDI_C = Object.freeze({
     alignedAlloc: _qbdibinder.bind('qbdi_alignedAlloc', 'pointer', ['uint32', 'uint32']),
     alignedFree: _qbdibinder.bind('qbdi_alignedFree', 'void', ['pointer']),
     simulateCall: _qbdibinder.bind('qbdi_simulateCall', 'void', ['pointer', rword, 'uint32',
-                                   rword, rword, rword, rword, rword, rword, rword, rword, rword, rword]),
+        '...', rword, rword, rword, rword, rword, rword, rword, rword, rword, rword]),
     getModuleNames: _qbdibinder.bind('qbdi_getModuleNames', 'pointer', ['pointer']),
     // Logs
     setLogPriority: _qbdibinder.bind('qbdi_setLogPriority', 'void', ['uint32']),
@@ -330,42 +343,57 @@ var QBDI_C = Object.freeze({
     precacheBasicBlock: _qbdibinder.bind('qbdi_precacheBasicBlock', 'uchar', ['pointer', rword]),
     clearCache: _qbdibinder.bind('qbdi_clearCache', 'void', ['pointer', rword, rword]),
     clearAllCache: _qbdibinder.bind('qbdi_clearAllCache', 'void', ['pointer']),
+    getNbExecBlock: _qbdibinder.bind('qbdi_getNbExecBlock', 'uint32', ['pointer']),
+    reduceCacheTo: _qbdibinder.bind('qbdi_reduceCacheTo', 'void', ['pointer', 'uint32']),
 });
 
 // Init some globals
 if (Process.arch === 'x64') {
-    /**
-     * An array holding register names.
-     */
-    var GPR_NAMES = ["RAX","RBX","RCX","RDX","RSI","RDI","R8","R9","R10","R11","R12","R13","R14","R15","RBP","RSP","RIP","EFLAGS"];
-    /**
-     * A constant string representing the register carrying the return value of a function.
-     */
-    var REG_RETURN = "RAX";
-    /**
-     * String of the instruction pointer register.
-     */
-    var REG_PC = "RIP";
-    /**
-     * String of the stack pointer register.
-     */
-    var REG_SP = "RSP";
-//} else if (Process.arch === 'arm') {
-//    var GPR_NAMES = ["R0","R1","R2","R3","R4","R5","R6","R7","R8","R9","R10","R12","FP","SP","LR","PC","CPSR"];
-//    var REG_RETURN = "R0";
-//    var REG_PC = "PC";
-//    var REG_SP = "SP";
-} else if (Process.arch === 'ia32'){
-    var GPR_NAMES = ["EAX","EBX","ECX","EDX","ESI","EDI","EBP","ESP","EIP","EFLAGS"];
-    var REG_RETURN = "EAX";
-    var REG_PC = "EIP";
-    var REG_SP = "ESP";
+    var GPR_NAMES_ = ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "RBP", "RSP", "RIP", "EFLAGS", "FS", "GS"];
+    var REG_RETURN_ = "RAX";
+    var REG_PC_ = "RIP";
+    var REG_SP_ = "RSP";
+} else if (Process.arch === 'arm64') {
+    var GPR_NAMES_ = ["X0", "X1", "X2", "X3", "X4", "X5", "X6", "X7", "X8", "X9", "X10", "X11", "X12", "X13", "X14", "X15", "X16", "X17", "X18", "X19", "X20", "X21", "X22", "X23", "X24", "X25", "X26", "X27", "X28", "FP", "LR", "SP", "NZCV", "PC"];
+    var REG_RETURN_ = "X0";
+    var REG_PC_ = "PC";
+    var REG_SP_ = "SP";
+} else if (Process.arch === 'arm') {
+    var GPR_NAMES_ = ["R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "SP", "LR", "PC", "CPSR"];
+    var REG_RETURN_ = "R0";
+    var REG_PC_ = "PC";
+    var REG_SP_ = "SP";
+} else if (Process.arch === 'ia32') {
+    var GPR_NAMES_ = ["EAX", "EBX", "ECX", "EDX", "ESI", "EDI", "EBP", "ESP", "EIP", "EFLAGS"];
+    var REG_RETURN_ = "EAX";
+    var REG_PC_ = "EIP";
+    var REG_SP_ = "ESP";
 }
 
 /**
- * Error return by the QBDI VM
+ * An array holding register names.
  */
-var VMError = Object.freeze({
+export var GPR_NAMES = GPR_NAMES_;
+/**
+ * A constant string representing the register carrying the return value of a function.
+ */
+export var REG_RETURN = REG_RETURN_;
+/**
+ * String of the instruction pointer register.
+ */
+export var REG_PC = REG_PC_;
+/**
+ * String of the stack pointer register.
+ */
+export var REG_SP = REG_SP_;
+
+/**
+ * Error return by the QBDI VM
+ *
+ * @enum {number}
+ * @readonly
+ */
+export var VMError = Object.freeze({
     /**
      * Returned event is invalid.
      */
@@ -374,8 +402,11 @@ var VMError = Object.freeze({
 
 /**
  * Synchronisation direction between Frida and QBDI GPR contexts
+ *
+ * @enum {number}
+ * @readonly
  */
-var SyncDirection = Object.freeze({
+export var SyncDirection = Object.freeze({
     /**
      * Constant variable used to synchronize QBDI's context to Frida's.
      *
@@ -390,29 +421,57 @@ var SyncDirection = Object.freeze({
 
 /**
  * The callback results.
+ *
+ * @enum {number}
+ * @readonly
  */
-var VMAction = Object.freeze({
+export var VMAction = Object.freeze({
     /**
      * The execution of the basic block continues.
      */
     CONTINUE: 0,
     /**
-     * The execution breaks and returns to the VM causing a complete reevaluation of
-     * the execution state. A :js:data:`VMAction.BREAK_TO_VM` is needed to ensure that modifications of
-     * the Program Counter or the program code are taken into account.
+     * Available only with PREINST InstCallback.  The instruction and the
+     * remained PREINST callbacks are skip. The execution continue with the
+     * POSTINST instruction.
+     *
+     * We recommand to used this result with a low priority PREINST callback in
+     * order to emulate the instruction without skipping the POSTINST callback.
      */
-    BREAK_TO_VM: 1,
+    SKIP_INST: 1,
+    /*!*
+     * Available only with InstCallback. The current instruction and the
+     * reminding callback (PRE and POST) are skip. The execution continues to
+     * the next instruction.
+     *
+     * For instruction that change the instruction pointer (jump/call/ret),
+     * BREAK_TO_VM must be used insted of SKIP.
+     *
+     * SKIP can break the record of MemoryAccess for the current instruction.
+     */
+    SKIP_PATCH: 2,
     /**
-     * Stops the execution of the program. This causes the run function to return early.
+     * The execution breaks and returns to the VM causing a complete
+     * reevaluation of the execution state. A :js:data:`VMAction.BREAK_TO_VM` is
+     * needed to ensure that modifications of the Program Counter or the program
+     * code are taken into account.
      */
-    STOP: 2
+    BREAK_TO_VM: 3,
+    /**
+     * Stops the execution of the program. This causes the run function to
+     * return early.
+     */
+    STOP: 4
 });
 
 
 /**
  * Position relative to an instruction.
+ *
+ * @enum {number}
+ * @readonly
  */
-var InstPosition = Object.freeze({
+export var InstPosition = Object.freeze({
     /**
      * Positioned **before** the instruction.
      */
@@ -424,306 +483,408 @@ var InstPosition = Object.freeze({
 });
 
 /**
- * Events triggered by the virtual machine.
+ * Priority of callback
+ *
+ * @enum {number}
+ * @readonly
  */
-var VMEvent = Object.freeze({
+export var CallbackPriority = Object.freeze({
+    /**
+     * Default priority for callback.
+     */
+    PRIORITY_DEFAULT: 0,
+    /**
+     * Maximum priority if getInstMemoryAccess is used in the callback.
+     */
+    PRIORITY_MEMACCESS_LIMIT: 0x1000000
+});
+
+/**
+ * Events triggered by the virtual machine.
+ *
+ * @enum {number}
+ * @readonly
+ */
+export var VMEvent = Object.freeze({
     /**
      * Triggered when the execution enters a sequence.
      */
-    SEQUENCE_ENTRY     : 1,
+    SEQUENCE_ENTRY: 1,
     /**
      * Triggered when the execution exits from the current sequence.
      */
-    SEQUENCE_EXIT      : 1<<1,
+    SEQUENCE_EXIT: 1 << 1,
     /**
      * Triggered when the execution enters a basic block.
      */
-    BASIC_BLOCK_ENTRY     : 1<<2,
+    BASIC_BLOCK_ENTRY: 1 << 2,
     /**
      * Triggered when the execution exits from the current basic block.
      */
-    BASIC_BLOCK_EXIT      : 1<<3,
+    BASIC_BLOCK_EXIT: 1 << 3,
     /**
      * Triggered when the execution enters a new (~unknown) basic block.
      */
-    BASIC_BLOCK_NEW       : 1<<4,
+    BASIC_BLOCK_NEW: 1 << 4,
     /**
      * Triggered when the ExecBroker executes an execution transfer.
      */
-    EXEC_TRANSFER_CALL    : 1<<5,
+    EXEC_TRANSFER_CALL: 1 << 5,
     /**
      * Triggered when the ExecBroker returns from an execution transfer.
      */
-    EXEC_TRANSFER_RETURN  : 1<<6,
+    EXEC_TRANSFER_RETURN: 1 << 6,
     /**
      * Not implemented.
      */
-    SYSCALL_ENTRY         : 1<<7,
+    SYSCALL_ENTRY: 1 << 7,
     /**
      * Not implemented.
      */
-    SYSCALL_EXIT          : 1<<8,
+    SYSCALL_EXIT: 1 << 8,
     /**
      * Not implemented.
      */
-    SIGNAL                : 1<<9
+    SIGNAL: 1 << 9
 });
 
 /**
  * Memory access type (read / write / ...)
+ *
+ * @enum {number}
+ * @readonly
  */
-var MemoryAccessType = Object.freeze({
+export var MemoryAccessType = Object.freeze({
     /**
      * Memory read access.
      */
-    MEMORY_READ : 1,
+    MEMORY_READ: 1,
     /**
      * Memory write access.
      */
-    MEMORY_WRITE : 2,
+    MEMORY_WRITE: 2,
     /**
      * Memory read/write access.
      */
-    MEMORY_READ_WRITE : 3
+    MEMORY_READ_WRITE: 3
 });
 
 /**
  * Memory access flags
+ *
+ * @enum {number}
+ * @readonly
  */
-var MemoryAccessFlags = Object.freeze({
+export var MemoryAccessFlags = Object.freeze({
     /**
      * Empty flag.
      */
-    MEMORY_NO_FLAGS : 0,
+    MEMORY_NO_FLAGS: 0,
     /**
      * The size of the access isn't known.
      */
-    MEMORY_UNKNOWN_SIZE : 1<<0,
+    MEMORY_UNKNOWN_SIZE: 1 << 0,
     /**
      * The given size is a minimum size.
      */
-    MEMORY_MINIMUM_SIZE : 1<<1,
+    MEMORY_MINIMUM_SIZE: 1 << 1,
     /**
      * The value of the access is unknown or hasn't been retrived.
      */
-    MEMORY_UNKNOWN_VALUE : 1<<2
+    MEMORY_UNKNOWN_VALUE: 1 << 2
 });
 
 /**
  * Register access type (read / write / rw)
+ *
+ * @enum {number}
+ * @readonly
  */
-var RegisterAccessType = Object.freeze({
+export var RegisterAccessType = Object.freeze({
     /**
      * Register is read.
      */
-    REGISTER_READ : 1,
+    REGISTER_READ: 1,
     /**
      * Register is written.
      */
-    REGISTER_WRITE : 2,
+    REGISTER_WRITE: 2,
     /**
      * Register is read/written.
      */
-    REGISTER_READ_WRITE : 3
+    REGISTER_READ_WRITE: 3
 });
 
 /**
  * Instruction Condition
+ *
+ * @enum {number}
+ * @readonly
  */
-var ConditionType = Object.freeze({
+export var ConditionType = Object.freeze({
     /**
      * The instruction is unconditionnal
      */
-    CONDITION_NONE : 0x0,
+    CONDITION_NONE: 0x0,
     /**
      * The instruction is always true
      */
-    CONDITION_ALWAYS : 0x2,
+    CONDITION_ALWAYS: 0x2,
     /**
      * The instruction is always false
      */
-    CONDITION_NEVER : 0x3,
+    CONDITION_NEVER: 0x3,
     /**
      * Equals ( '==' )
      */
-    CONDITION_EQUALS : 0x4,
+    CONDITION_EQUALS: 0x4,
     /**
      * Not Equals ( '!=' )
      */
-    CONDITION_NOT_EQUALS : 0x5,
+    CONDITION_NOT_EQUALS: 0x5,
     /**
      * Above ( '>' unsigned )
      */
-    CONDITION_ABOVE : 0x6,
+    CONDITION_ABOVE: 0x6,
     /**
      * Below or Equals ( '<=' unsigned )
      */
-    CONDITION_BELOW_EQUALS : 0x7,
+    CONDITION_BELOW_EQUALS: 0x7,
     /**
      * Above or Equals ( '>=' unsigned )
      */
-    CONDITION_ABOVE_EQUALS : 0x8,
+    CONDITION_ABOVE_EQUALS: 0x8,
     /**
      * Below ( '<' unsigned )
      */
-    CONDITION_BELOW : 0x9,
+    CONDITION_BELOW: 0x9,
     /**
      * Great ( '>' signed )
      */
-    CONDITION_GREAT : 0xa,
+    CONDITION_GREAT: 0xa,
     /**
      * Less or Equals ( '<=' signed )
      */
-    CONDITION_LESS_EQUALS : 0xb,
+    CONDITION_LESS_EQUALS: 0xb,
     /**
      * Great or Equals ( '>=' signed )
      */
-    CONDITION_GREAT_EQUALS : 0xc,
+    CONDITION_GREAT_EQUALS: 0xc,
     /**
      * Less ( '<' signed )
      */
-    CONDITION_LESS : 0xd,
+    CONDITION_LESS: 0xd,
     /**
      * Even
      */
-    CONDITION_EVEN : 0xe,
+    CONDITION_EVEN: 0xe,
     /**
      * Odd
      */
-    CONDITION_ODD : 0xf,
+    CONDITION_ODD: 0xf,
     /**
      * Overflow
      */
-    CONDITION_OVERFLOW : 0x10,
+    CONDITION_OVERFLOW: 0x10,
     /**
      * Not Overflow
      */
-    CONDITION_NOT_OVERFLOW : 0x11,
+    CONDITION_NOT_OVERFLOW: 0x11,
     /**
      * Sign
      */
-    CONDITION_SIGN : 0x12,
+    CONDITION_SIGN: 0x12,
     /**
      * Not Sign
      */
-    CONDITION_NOT_SIGN : 0x13
+    CONDITION_NOT_SIGN: 0x13
 });
 
 
 /**
  * Register access type (read / write / rw)
+ *
+ * @enum {number}
+ * @readonly
  */
-var OperandType = Object.freeze({
+export var OperandType = Object.freeze({
     /**
      * Invalid operand.
      */
-    OPERAND_INVALID : 0,
+    OPERAND_INVALID: 0,
     /**
      * Immediate operand.
      */
-    OPERAND_IMM : 1,
+    OPERAND_IMM: 1,
     /**
      * General purpose register operand.
      */
-    OPERAND_GPR : 2,
+    OPERAND_GPR: 2,
     /**
      * Predicate special operand.
      */
-    OPERAND_PRED : 3,
+    OPERAND_PRED: 3,
     /**
      * Float register operand.
      */
-    OPERAND_FPR : 4,
+    OPERAND_FPR: 4,
     /**
      * Segment or unsupported register operand
      */
-    OPERAND_SEG : 5
+    OPERAND_SEG: 5
 });
 
 /**
  * Operand flag
+ *
+ * @enum {number}
+ * @readonly
  */
-var OperandFlag = Object.freeze({
+export var OperandFlag = Object.freeze({
     /**
      * No flag
      */
-    OPERANDFLAG_NONE : 0,
+    OPERANDFLAG_NONE: 0,
     /**
      * The operand is used to compute an address
      */
-    OPERANDFLAG_ADDR : 1 << 0,
+    OPERANDFLAG_ADDR: 1 << 0,
     /**
      * The value of the operand is PC relative
      */
-    OPERANDFLAG_PCREL : 1 << 1,
+    OPERANDFLAG_PCREL: 1 << 1,
     /**
      * The operand role isn't fully defined
      */
-    OPERANDFLAG_UNDEFINED_EFFECT : 1 << 2,
+    OPERANDFLAG_UNDEFINED_EFFECT: 1 << 2,
     /**
      * The operand is implicit
      */
-    OPERANDFLAG_IMPLICIT : 1 << 3
+    OPERANDFLAG_IMPLICIT: 1 << 3
 });
 
 /**
  * Properties to retrieve during an instruction analysis.
+ *
+ * @enum {number}
+ * @readonly
  */
-var AnalysisType = Object.freeze({
+export var AnalysisType = Object.freeze({
     /**
      * Instruction analysis (address, mnemonic, ...).
      */
-    ANALYSIS_INSTRUCTION : 1,
+    ANALYSIS_INSTRUCTION: 1,
     /**
      * Instruction disassembly.
      */
-    ANALYSIS_DISASSEMBLY : 1<<1,
+    ANALYSIS_DISASSEMBLY: 1 << 1,
     /**
      * Instruction operands analysis.
      */
-    ANALYSIS_OPERANDS : 1<<2,
+    ANALYSIS_OPERANDS: 1 << 2,
     /**
      * Instruction nearest symbol (and offset).
      */
-    ANALYSIS_SYMBOL : 1<<3
+    ANALYSIS_SYMBOL: 1 << 3,
+    /**
+     * QBDI JIT Information.
+     */
+    ANALYSIS_JIT: 1 << 4
 });
 
 /**
  * QBDI VM Options
+ *
+ * @enum {number}
+ * @readonly
  */
-var Options = Object.freeze({
+export var Options = {
     /**
      * Default value
      */
-    NO_OPT : 0,
+    NO_OPT: 0,
     /**
      * Disable all operation on FPU (SSE, AVX, SIMD).
      * May break the execution if the target use the FPU.
      */
-    OPT_DISABLE_FPR : 1<<0,
+    OPT_DISABLE_FPR: 1 << 0,
     /**
      * Disable context switch optimisation when the target
      * execblock doesn't used FPR.
      */
-    OPT_DISABLE_OPTIONAL_FPR : 1<<1,
+    OPT_DISABLE_OPTIONAL_FPR : 1 << 1,
+    /**
+     * Don't load the value when perform memory access.
+     */
+    OPT_DISABLE_MEMORYACCESS_VALUE : 1 << 2,
+    /**
+     * Don't save and restore errno.
+     */
+    OPT_DISABLE_ERRNO_BACKUP : 1 << 3,
+};
+if (Process.arch === 'x64') {
     /**
      * Used the AT&T syntax for instruction disassembly (for X86 and X86_64)
      */
-    OPT_ATT_SYNTAX : 1<<24
-});
+    Options.OPT_ATT_SYNTAX = 1 << 24;
+    /**
+     * Enable Backup/Restore of FS/GS segment.
+     * This option uses the instructions (RD|WR)(FS|GS)BASE that must be
+     * supported by the operating system.
+     */
+    Options.OPT_ENABLE_FS_GS = 1 << 25;
+} else if (Process.arch === 'ia32') {
+    Options.OPT_ATT_SYNTAX = 1 << 24;
+} else if (Process.arch === 'arm64') {
+    /**
+     * Disable the emulation of the local monitor by QBDI
+     */
+    Options.OPT_DISABLE_LOCAL_MONITOR = 1 << 24;
+    /**
+     * Disable pointeur authentication
+     */
+    Options.OPT_BYPASS_PAUTH = 1 << 25;
+    /**
+     * Enable BTI on instrumented code
+     */
+    Options.OPT_ENABLE_BTI = 1 << 26;
+} else if (Process.arch === 'arm') {
+    Options.OPT_DISABLE_LOCAL_MONITOR = 1 << 24;
+    /**
+     * Disable the used of D16-D31 register
+     */
+    Options.OPT_DISABLE_D16_D31 = 1 << 25;
+    /**
+     * Change between ARM and Thumb as an ARMv4 CPU
+     */
+    Options.OPT_ARMv4 = 3 << 26;
+    /**
+     * Change between ARM and Thumb as an ARMv5T or ARMv6 CPU
+     */
+    Options.OPT_ARMv5T_6 = 1 << 27;
+    /**
+     * Change between ARM and Thumb as an ARMv7 CPU (default)
+     */
+    Options.OPT_ARMv7 = 0;
+    Options.OPT_ARM_MASK = 3 << 26;
+}
 
-class InstrRuleDataCBK {
+Options = Object.freeze(Options);
+
+export class InstrRuleDataCBK {
     /**
      * Object to define an :js:func:`InstCallback` in an :js:func:`InstrRuleCallback`
      *
-     * @param {InstPosition} pos    Relative position of the callback (PreInst / PostInst).
-     * @param {InstCallback} cbk    A **native** InstCallback returned by :js:func:`QBDI.newInstCallback`.
-     * @param {Object}       data   User defined data passed to the callback.
+     * @param {InstPosition} pos       Relative position of the callback (PreInst / PostInst).
+     * @param {InstCallback} cbk       A **native** InstCallback returned by :js:func:`VM.newInstCallback`.
+     * @param {Object|null}       data      User defined data passed to the callback.
+     * @param {Int}          priority  The priority of the callback.
      */
-    constructor(pos, cbk, data) {
+    constructor(pos, cbk, data, priority = CallbackPriority.PRIORITY_DEFAULT) {
         this.position = pos;
         this.cbk = cbk;
         this.data = data;
+        this.priority = priority;
     }
 }
 
@@ -751,9 +912,9 @@ class State {
 /**
  * General Purpose Register context
  */
-class GPRState extends State  {
+class GPRState extends State {
     _getGPRId(rid) {
-        if (typeof(rid) === 'string') {
+        if (typeof (rid) === 'string') {
             rid = GPR_NAMES.indexOf(rid.toUpperCase());
         }
         if (rid < 0 || rid > GPR_NAMES.length) {
@@ -844,7 +1005,7 @@ class GPRState extends State  {
      */
     synchronizeContext(FridaCtx, direction) {
         for (var i in GPR_NAMES) {
-            if (GPR_NAMES[i] === "EFLAGS") {
+            if (GPR_NAMES[i] === "EFLAGS" || GPR_NAMES[i] === "FS" || GPR_NAMES[i] === "GS") {
                 continue;
             }
             this.synchronizeRegister(FridaCtx, GPR_NAMES[i], direction);
@@ -864,7 +1025,7 @@ class GPRState extends State  {
     pp(color) {
         var RED = color ? "\x1b[31m" : "";
         var GREEN = color ? "\x1b[32m" : "";
-        var RESET = color ?"\x1b[0m" : "";
+        var RESET = color ? "\x1b[0m" : "";
         var regCnt = GPR_NAMES.length;
         var regs = this.getRegisters();
         var line = "";
@@ -873,11 +1034,11 @@ class GPRState extends State  {
             if (!(i % 4) && i) {
                 line += '\n';
             }
-            line+=GREEN; // Will be overwritten by RED if necessary
-            if (name === "RIP" | name === "PC"){
+            line += GREEN; // Will be overwritten by RED if necessary
+            if (name === "RIP" | name === "PC") {
                 line += RED;
             }
-            line += name.leftPad("   ") + RESET + "=0x" + hexPointer(regs[name]) + " ";
+            line += name.leftPad("    ") + RESET + "=0x" + hexPointer(regs[name]) + " ";
         }
         return line;
     }
@@ -894,7 +1055,7 @@ class GPRState extends State  {
     static validOrThrow(state) {
         if (!GPRState.prototype.isPrototypeOf(state)) {
             throw new TypeError('Invalid GPRState');
-         }
+        }
     }
 }
 
@@ -905,11 +1066,11 @@ class FPRState extends State {
     static validOrThrow(state) {
         if (!FPRState.prototype.isPrototypeOf(state)) {
             throw new TypeError('Invalid FPRState');
-         }
+        }
     }
 }
 
-class QBDI {
+export class VM {
     // private member
     #vm = null;
     #memoryAccessDesc = null;
@@ -921,7 +1082,7 @@ class QBDI {
     #userDataPointer = 0;
 
     /**
-     * Create a new instrumentation virtual machine using "**new QBDI()**"
+     * Create a new instrumentation virtual machine using "**new VM()**"
      */
     constructor() {
         // Enforce a minimum QBDI version (API compatibility)
@@ -940,12 +1101,22 @@ class QBDI {
         this.#vmStateStructDesc = this._parseStructDesc(QBDI_C.getVMStateStructDesc());
 
         // add a destructor on garbage collection
-        var that = this;
-        WeakRef.bind(QBDI, function dispose () {
-            if (that.ptr !== null) {
-                that._terminateVM(that.ptr);
-            }
-        });
+        // The name of the API change with frida 15.0.0
+        if (Number(Frida.version.split(".")[0]) < 15) {
+            var that = this;
+            WeakRef.bind(VM, function dispose() {
+                if (that.ptr !== null) {
+                    that._terminateVM(that.ptr);
+                }
+            });
+        } else {
+            var that = this;
+            Script.bindWeak(VM, function dispose() {
+                if (that.ptr !== null) {
+                    that._terminateVM(that.ptr);
+                }
+            });
+        }
     }
 
     get ptr() {
@@ -964,12 +1135,12 @@ class QBDI {
         var version = {};
         var versionPtr = Memory.alloc(4);
         var vStrPtr = QBDI_C.getVersion(versionPtr);
-        var vInt = Memory.readU32(versionPtr);
-        version.string = Memory.readCString(vStrPtr);
+        var vInt = versionPtr.readU32();
+        version.string = vStrPtr.readCString();
         version.integer = vInt;
-        version.major = (vInt >> 8) & 0xf;
-        version.minor = (vInt >> 4) & 0xf;
-        version.patch = vInt & 0xf;
+        version.major = (vInt >> 16) & 0xff;
+        version.minor = (vInt >> 8) & 0xff;
+        version.patch = vInt & 0xff;
         Object.freeze(version);
         return version;
     }
@@ -995,8 +1166,8 @@ class QBDI {
     /**
      * Add an address range to the set of instrumented address ranges.
      *
-     * @param {String|Number} start  Start address of the range (included).
-     * @param {String|Number} end    End address of the range (excluded).
+     * @param {String|Number|NativePointer} start  Start address of the range (included).
+     * @param {String|Number|NativePointer} end    End address of the range (excluded).
      */
     addInstrumentedRange(start, end) {
         QBDI_C.addInstrumentedRange(this.#vm, start.toRword(), end.toRword());
@@ -1017,7 +1188,7 @@ class QBDI {
     /**
      * Add the executable address ranges of a module to the set of instrumented address ranges. using an address belonging to the module.
      *
-     * @param  {String|Number} addr An address contained by module's range.
+     * @param  {String|Number|NativePointer} addr An address contained by module's range.
      *
      * @return {bool} True if at least one range was removed from the instrumented ranges.
      */
@@ -1037,8 +1208,8 @@ class QBDI {
     /**
      * Remove an address range from the set of instrumented address ranges.
      *
-     * @param {String|Number} start  Start address of the range (included).
-     * @param {String|Number} end    End address of the range (excluded).
+     * @param {String|Number|NativePointer} start  Start address of the range (included).
+     * @param {String|Number|NativePointer} end    End address of the range (excluded).
      */
     removeInstrumentedRange(start, end) {
         QBDI_C.removeInstrumentedRange(this.#vm, start.toRword(), end.toRword());
@@ -1059,7 +1230,7 @@ class QBDI {
     /**
      * Remove the executable address ranges of a module from the set of instrumented address ranges using an address belonging to the module.
      *
-     * @param {String|Number} addr: An address contained by module's range.
+     * @param {String|Number|NativePointer} addr: An address contained by module's range.
      *
      * @return {bool} True if at least one range was added to the instrumented ranges.
      */
@@ -1077,8 +1248,8 @@ class QBDI {
     /**
      * Start the execution by the DBI from a given address (and stop when another is reached).
      *
-     * @param {String|Number} start  Address of the first instruction to execute.
-     * @param {String|Number} stop   Stop the execution when this instruction is reached.
+     * @param {String|Number|NativePointer} start  Address of the first instruction to execute.
+     * @param {String|Number|NativePointer} stop   Stop the execution when this instruction is reached.
      *
      * @return {bool} True if at least one block has been executed.
      */
@@ -1105,6 +1276,15 @@ class QBDI {
     }
 
     /**
+     * Get the backuped value of errno.
+     *
+     * @return {Integer} errno
+     */
+    getErrno() {
+        return QBDI_C.getErrno(this.#vm);
+    }
+
+    /**
      * Set the GPR state
      *
      * @param {GPRState} state  Array of register values
@@ -1125,9 +1305,18 @@ class QBDI {
     }
 
     /**
+     * Set the backuped value of errno
+     *
+     * @param {Integer} errno  the value to set
+     */
+    setErrno(errno) {
+        QBDI_C.setErrno(this.#vm, errno);
+    }
+
+    /**
      * Pre-cache a known basic block.
      *
-     * @param {String|Number} pc  Start address of a basic block
+     * @param {String|Number|NativePointer} pc  Start address of a basic block
      *
      * @return {bool} True if basic block has been inserted in cache.
      */
@@ -1138,8 +1327,8 @@ class QBDI {
     /**
      * Clear a specific address range from the translation cache.
      *
-     * @param {String|Number}  start  Start of the address range to clear from the cache.
-     * @param {String|Number}  end    End of the address range to clear from the cache.
+     * @param {String|Number|NativePointer}  start  Start of the address range to clear from the cache.
+     * @param {String|Number|NativePointer}  end    End of the address range to clear from the cache.
      */
     clearCache(start, end) {
         QBDI_C.clearCache(this.#vm, start, end)
@@ -1152,47 +1341,70 @@ class QBDI {
         QBDI_C.clearAllCache(this.#vm)
     }
 
+    /**
+     * Get the number of ExecBlock in the cache. Each block uses 2 memory pages
+     * and some heap allocations.
+     *
+     * @return {Integer} The number of ExecBlock in the cache.
+     */
+    getNbExecBlock() {
+        return QBDI_C.getNbExecBlock(this.#vm)
+    }
+
+    /** 
+     * Reduce the cache to X ExecBlock. Note that this will try to purge the
+     * oldest ExecBlock first, but the block may be recreate if needed by
+     * followed execution.
+     *
+     * @param {Integer} nb The number of BasicBlock that should remains in the
+     *                     cache
+     */
+    reduceCacheTo(nb) {
+        return QBDI_C.reduceCacheTo(this.#vm, nb)
+    }
 
     /**
      * Register a callback event if the instruction matches the mnemonic.
      *
-     * @param {String}       mnem   Mnemonic to match.
-     * @param {InstPosition} pos    Relative position of the callback (PreInst / PostInst).
-     * @param {InstCallback} cbk    A **native** InstCallback returned by :js:func:`QBDI.newInstCallback`.
-     * @param {Object}       data   User defined data passed to the callback.
+     * @param {String}       mnem      Mnemonic to match.
+     * @param {InstPosition} pos       Relative position of the callback (PreInst / PostInst).
+     * @param {InstCallback} cbk       A **native** InstCallback returned by :js:func:`VM.newInstCallback`.
+     * @param {Object|null}       data      User defined data passed to the callback.
+     * @param {Int}          priority  The priority of the callback.
      *
      * @return {Number} The id of the registered instrumentation (or VMError.INVALID_EVENTID in case of failure).
      */
-    addMnemonicCB(mnem, pos, cbk, data) {
+    addMnemonicCB(mnem, pos, cbk, data, priority = CallbackPriority.PRIORITY_DEFAULT) {
         var mnemPtr = Memory.allocUtf8String(mnem);
         var vm = this.#vm;
         return this._retainUserData(data, function (dataPtr) {
-            return QBDI_C.addMnemonicCB(vm, mnemPtr, pos, cbk, dataPtr);
+            return QBDI_C.addMnemonicCB(vm, mnemPtr, pos, cbk, dataPtr, priority);
         });
     }
 
     /**
      * Register a callback event for every memory access matching the type bitfield made by the instruction in the range codeStart to codeEnd.
      *
-     * @param {MemoryAccessType} type   A mode bitfield: either MEMORY_READ, MEMORY_WRITE or both (MEMORY_READ_WRITE).
-     * @param {InstCallback}     cbk    A **native** InstCallback returned by :js:func:`QBDI.newInstCallback`.
-     * @param {Object}           data   User defined data passed to the callback.
+     * @param {MemoryAccessType} type      A mode bitfield: either MEMORY_READ, MEMORY_WRITE or both (MEMORY_READ_WRITE).
+     * @param {InstCallback}     cbk       A **native** InstCallback returned by :js:func:`VM.newInstCallback`.
+     * @param {Object|null}           data      User defined data passed to the callback.
+     * @param {Int}              priority  The priority of the callback.
      *
      * @return {Number} The id of the registered instrumentation (or VMError.INVALID_EVENTID in case of failure).
      */
-    addMemAccessCB(type, cbk, data) {
+    addMemAccessCB(type, cbk, data, priority = CallbackPriority.PRIORITY_DEFAULT) {
         var vm = this.#vm;
         return this._retainUserData(data, function (dataPtr) {
-            return QBDI_C.addMemAccessCB(vm, type, cbk, dataPtr);
+            return QBDI_C.addMemAccessCB(vm, type, cbk, dataPtr, priority);
         });
     }
 
     /**
      * Add a custom instrumentation rule to the VM.
      *
-     * @param {InstrRuleCallback}  cbk    A **native** InstrRuleCallback returned by :js:func:`QBDI.newInstrRuleCallback`.
+     * @param {InstrRuleCallback}  cbk    A **native** InstrRuleCallback returned by :js:func:`VM.newInstrRuleCallback`.
      * @param {AnalysisType}       type   Analyse type needed for this instruction function pointer to the callback
-     * @param {Object}             data   User defined data passed to the callback.
+     * @param {Object|null}             data   User defined data passed to the callback.
      *
      * @return {Number} The id of the registered instrumentation (or VMError.INVALID_EVENTID in case of failure).
      */
@@ -1206,11 +1418,11 @@ class QBDI {
     /**
      * Add a custom instrumentation rule to the VM for a range of address.
      *
-     * @param {String|Number}      start  Begin of the range of address where apply the rule
-     * @param {String|Number}      end    End of the range of address where apply the rule
-     * @param {InstrRuleCallback}  cbk    A **native** InstrRuleCallback returned by :js:func:`QBDI.newInstrRuleCallback`.
+     * @param {String|Number|NativePointer}      start  Begin of the range of address where apply the rule
+     * @param {String|Number|NativePointer}      end    End of the range of address where apply the rule
+     * @param {InstrRuleCallback}  cbk    A **native** InstrRuleCallback returned by :js:func:`VM.newInstrRuleCallback`.
      * @param {AnalysisType}       type   Analyse type needed for this instruction function pointer to the callback
-     * @param {Object}             data   User defined data passed to the callback.
+     * @param {Object|null}             data   User defined data passed to the callback.
      *
      * @return {Number} The id of the registered instrumentation (or VMError.INVALID_EVENTID in case of failure).
      */
@@ -1225,10 +1437,10 @@ class QBDI {
      * Add a virtual callback which is triggered for any memory access at a specific address matching the access type.
      * Virtual callbacks are called via callback forwarding by a gate callback triggered on every memory access. This incurs a high performance cost.
      *
-     * @param {String|Number}     addr   Code address which will trigger the callback.
+     * @param {String|Number|NativePointer}     addr   Code address which will trigger the callback.
      * @param {MemoryAccessType}  type   A mode bitfield: either MEMORY_READ, MEMORY_WRITE or both (MEMORY_READ_WRITE).
-     * @param {InstCallback}      cbk    A **native** InstCallback returned by :js:func:`QBDI.newInstCallback`.
-     * @param {Object}            data   User defined data passed to the callback.
+     * @param {InstCallback}      cbk    A **native** InstCallback returned by :js:func:`VM.newInstCallback`.
+     * @param {Object|null}            data   User defined data passed to the callback.
      *
      * @return {Number} The id of the registered instrumentation (or VMError.INVALID_EVENTID in case of failure).
      */
@@ -1243,11 +1455,11 @@ class QBDI {
      * Add a virtual callback which is triggered for any memory access in a specific address range matching the access type.
      * Virtual callbacks are called via callback forwarding by a gate callback triggered on every memory access. This incurs a high performance cost.
      *
-     * @param {String|Number}     start    Start of the address range which will trigger the callback.
-     * @param {String|Number}     end      End of the address range which will trigger the callback.
+     * @param {String|Number|NativePointer}     start    Start of the address range which will trigger the callback.
+     * @param {String|Number|NativePointer}     end      End of the address range which will trigger the callback.
      * @param {MemoryAccessType}  type     A mode bitfield: either MEMORY_READ, MEMORY_WRITE or both (MEMORY_READ_WRITE).
-     * @param {InstCallback}      cbk      A **native** InstCallback returned by :js:func:`QBDI.newInstCallback`.
-     * @param {Object}            data     User defined data passed to the callback.
+     * @param {InstCallback}      cbk      A **native** InstCallback returned by :js:func:`VM.newInstCallback`.
+     * @param {Object|null}            data     User defined data passed to the callback.
      *
      * @return {Number} The id of the registered instrumentation (or VMError.INVALID_EVENTID in case of failure).
      */
@@ -1261,51 +1473,54 @@ class QBDI {
     /**
      * Register a callback event for a specific instruction event.
      *
-     * @param {InstPosition} pos    Relative position of the callback (PreInst / PostInst).
-     * @param {InstCallback} cbk    A **native** InstCallback returned by :js:func:`QBDI.newInstCallback`.
-     * @param {Object}       data   User defined data passed to the callback.
+     * @param {InstPosition} pos       Relative position of the callback (PreInst / PostInst).
+     * @param {InstCallback} cbk       A **native** InstCallback returned by :js:func:`VM.newInstCallback`.
+     * @param {Object|null}       data      User defined data passed to the callback.
+     * @param {Int}          priority  The priority of the callback.
      *
      * @return {Number} The id of the registered instrumentation (or VMError.INVALID_EVENTID in case of failure).
      */
-    addCodeCB(pos, cbk, data) {
+    addCodeCB(pos, cbk, data, priority = CallbackPriority.PRIORITY_DEFAULT) {
         var vm = this.#vm;
         return this._retainUserData(data, function (dataPtr) {
-            return QBDI_C.addCodeCB(vm, pos, cbk, dataPtr);
+            return QBDI_C.addCodeCB(vm, pos, cbk, dataPtr, priority);
         });
     }
 
     /**
      * Register a callback for when a specific address is executed.
      *
-     * @param {String|Number} addr   Code address which will trigger the callback.
-     * @param {InstPosition}  pos    Relative position of the callback (PreInst / PostInst).
-     * @param {InstCallback}  cbk    A **native** InstCallback returned by :js:func:`QBDI.newInstCallback`.
-     * @param {Object}        data   User defined data passed to the callback.
+     * @param {String|Number|NativePointer} addr      Code address which will trigger the callback.
+     * @param {InstPosition}  pos       Relative position of the callback (PreInst / PostInst).
+     * @param {InstCallback}  cbk       A **native** InstCallback returned by :js:func:`VM.newInstCallback`.
+     * @param {Object|null}        data      User defined data passed to the callback.
+     * @param {Int}           priority  The priority of the callback.
      *
      * @return {Number} The id of the registered instrumentation (or VMError.INVALID_EVENTID in case of failure).
      */
-    addCodeAddrCB(addr, pos, cbk, data) {
+    addCodeAddrCB(addr, pos, cbk, data, priority = CallbackPriority.PRIORITY_DEFAULT) {
         var vm = this.#vm;
         return this._retainUserData(data, function (dataPtr) {
-            return QBDI_C.addCodeAddrCB(vm, addr.toRword(), pos, cbk, dataPtr);
+            return QBDI_C.addCodeAddrCB(vm, addr.toRword(), pos, cbk, dataPtr, priority);
         });
     }
 
     /**
      * Register a callback for when a specific address range is executed.
      *
-     * @param {String|Number} start  Start of the address range which will trigger the callback.
-     * @param {String|Number} end    End of the address range which will trigger the callback.
-     * @param {InstPosition}  pos    Relative position of the callback (PreInst / PostInst).
-     * @param {InstCallback}  cbk    A **native** InstCallback returned by :js:func:`QBDI.newInstCallback`.
-     * @param {Object}        data   User defined data passed to the callback.
+     * @param {String|Number|NativePointer} start     Start of the address range which will trigger the callback.
+     * @param {String|Number|NativePointer} end       End of the address range which will trigger the callback.
+     * @param {InstPosition}  pos       Relative position of the callback (PreInst / PostInst).
+     * @param {InstCallback}  cbk       A **native** InstCallback returned by :js:func:`VM.newInstCallback`.
+     * @param {Object|null}        data      User defined data passed to the callback.
+     * @param {Int}           priority  The priority of the callback.
      *
      * @return {Number} The id of the registered instrumentation (or VMError.INVALID_EVENTID in case of failure).
      */
-    addCodeRangeCB(start, end, pos, cbk, data) {
+    addCodeRangeCB(start, end, pos, cbk, data, priority = CallbackPriority.PRIORITY_DEFAULT) {
         var vm = this.#vm;
         return this._retainUserData(data, function (dataPtr) {
-            return QBDI_C.addCodeRangeCB(vm, start.toRword(), end.toRword(), pos, cbk, dataPtr);
+            return QBDI_C.addCodeRangeCB(vm, start.toRword(), end.toRword(), pos, cbk, dataPtr, priority);
         });
     }
 
@@ -1313,8 +1528,8 @@ class QBDI {
      * Register a callback event for a specific VM event.
      *
      * @param {VMEvent}    mask   A mask of VM event type which will trigger the callback.
-     * @param {VMCallback} cbk    A **native** VMCallback returned by :js:func:`QBDI.newVMCallback`.
-     * @param {Object}     data   User defined data passed to the callback.
+     * @param {VMCallback} cbk    A **native** VMCallback returned by :js:func:`VM.newVMCallback`.
+     * @param {Object|null}     data   User defined data passed to the callback.
      *
      * @return {Number} The id of the registered instrumentation (or VMError.INVALID_EVENTID in case of failure).
      */
@@ -1365,7 +1580,7 @@ class QBDI {
      * Obtain the analysis of a cached instruction. Analysis results are cached in the VM.
      * The validity of the returned pointer is only guaranteed until the end of the callback, else a deepcopy of the structure is required.
      *
-     * @param {String|Number} addr    The address of the instruction to analyse.
+     * @param {String|Number|NativePointer} addr    The address of the instruction to analyse.
      * @param {AnalysisType}  [type]  Properties to retrieve during analysis (default to ANALYSIS_INSTRUCTION | ANALYSIS_DISASSEMBLY).
      *
      * @return {InstAnalysis} A :js:class:`InstAnalysis` object containing the analysis result. null if the instruction isn't in the cache.
@@ -1373,6 +1588,28 @@ class QBDI {
     getCachedInstAnalysis(addr, type) {
         type = type || (AnalysisType.ANALYSIS_INSTRUCTION | AnalysisType.ANALYSIS_DISASSEMBLY);
         var analysis = QBDI_C.getCachedInstAnalysis(this.#vm, addr.toRword(), type);
+        if (analysis.isNull()) {
+            return NULL;
+        }
+        return this._parseInstAnalysis(analysis);
+    }
+
+    /**
+     * Obtain the analysis of a JITed instruction. Analysis results are cached
+     * in the VM. The validity of the returned pointer is only guaranteed until
+     * the end of the callback or a call to a noconst method of the VM object.
+     * This API may be used to determine if a given address of the current
+     * process memory correspond to the JIT patch from this VM. Note that this
+     * call may allocate memory.
+     *
+     * @param {String|Number|NativePointer} addr    The JIT address
+     * @param {AnalysisType}  [type]  Properties to retrieve during analysis (default to ANALYSIS_INSTRUCTION | ANALYSIS_DISASSEMBLY).
+     *
+     * @return {InstAnalysis} A :js:class:`InstAnalysis` object containing the analysis result. null if the instruction isn't in the cache.
+     */
+    getJITInstAnalysis(addr, type) {
+        type = type || (AnalysisType.ANALYSIS_INSTRUCTION | AnalysisType.ANALYSIS_DISASSEMBLY | AnalysisType.ANALYSIS_JIT);
+        var analysis = QBDI_C.getJITInstAnalysis(this.#vm, addr.toRword(), type);
         if (analysis.isNull()) {
             return NULL;
         }
@@ -1423,7 +1660,7 @@ class QBDI {
         if (ret == false) {
             return NULL;
         }
-        return Memory.readPointer(stackPtr);
+        return stackPtr.readPointer();
     }
 
 
@@ -1452,7 +1689,7 @@ class QBDI {
      * Simulate a call by modifying the stack and registers accordingly.
      *
      * @param {GPRState}                state     Array of register values
-     * @param {String|Number}           retAddr   Return address of the call to simulate.
+     * @param {String|Number|NativePointer}           retAddr   Return address of the call to simulate.
      * @param {StringArray|NumberArray} args      A variadic list of arguments.
      */
     simulateCall(state, retAddr, args) {
@@ -1460,7 +1697,7 @@ class QBDI {
         retAddr = retAddr.toRword();
         var fargs = this._formatVAArgs(args);
         // Use this weird construction to work around a bug in the duktape runtime
-        var _simulateCall = function(a, b, c, d, e, f, g, h, i, j) {
+        var _simulateCall = function (a, b, c, d, e, f, g, h, i, j) {
             QBDI_C.simulateCall(state.ptr, retAddr, fargs[0], a, b, c, d, e, f, g, h, i, j);
         }
         _simulateCall.apply(null, fargs[1]);
@@ -1474,15 +1711,15 @@ class QBDI {
     getModuleNames() {
         var sizePtr = Memory.alloc(4);
         var modsPtr = QBDI_C.getModuleNames(sizePtr);
-        var size = Memory.readU32(sizePtr);
+        var size = sizePtr.readU32();
         if (modsPtr.isNull() || size === 0) {
             return [];
         }
         var mods = [];
         var p = modsPtr;
         for (var i = 0; i < size; i++) {
-            var strPtr = Memory.readPointer(p);
-            var str = Memory.readCString(strPtr);
+            var strPtr = p.readPointer();
+            var str = strPtr.readCString();
             mods.push(str);
             System.free(strPtr);
             p = p.add(Process.pointerSize);
@@ -1499,6 +1736,14 @@ class QBDI {
     // Helpers
 
     /**
+     * This callback is displayed as part of the Requester class.
+     * @callback InstrRuleCallbackRaw
+     * @param {VM} vm
+     * @param {InstAnalysis} ana
+     * @param {*} data
+     */
+
+    /**
      * Create a native **Instruction rule callback** from a JS function.
      *
      * Example:
@@ -1507,17 +1752,17 @@ class QBDI {
      *       >>>   return [new InstrRuleDataCBK(InstPosition.POSTINST, printCB, ana.disassembly)];
      *       >>> });
      *
-     * @param {InstrRuleCallback} cbk an instruction callback (ex: function(vm, ana, data) {};)
+     * @param {InstrRuleCallbackRaw} cbk an instruction callback (ex: function(vm, ana, data) {};)
      *
      * @return an native InstrRuleCallback
      */
     newInstrRuleCallback(cbk) {
-        if (typeof(cbk) !== 'function' || cbk.length !== 3) {
+        if (typeof (cbk) !== 'function' || cbk.length !== 3) {
             return undefined;
         }
         // Use a closure to provide object
         var vm = this;
-        var jcbk = function(vmPtr, anaPtr, cbksPtr, dataPtr) {
+        var jcbk = function (vmPtr, anaPtr, cbksPtr, dataPtr) {
             var ana = vm._parseInstAnalysis(anaPtr);
             var data = vm._getUserData(dataPtr);
             var res = cbk(vm, ana, data.userdata);
@@ -1532,12 +1777,20 @@ class QBDI {
             }
             for (var i = 0; i < res.length; i++) {
                 var d = vm._retainUserDataForInstrRuleCB2(res[i].data, data.id);
-                QBDI_C.addInstrRuleData(cbksPtr, res[i].position, res[i].cbk, d);
+                QBDI_C.addInstrRuleData(cbksPtr, res[i].position, res[i].cbk, d, res[i].priority);
             }
         }
         return new NativeCallback(jcbk, 'void', ['pointer', 'pointer', 'pointer', 'pointer']);
     }
 
+    /**
+     * This callback is displayed as part of the Requester class.
+     * @callback InstCallbackRaw
+     * @param {VM} vm
+     * @param {GPRState} gpr
+     * @param {FPRState} fpr
+     * @param {*} data
+     */
 
     /**
      * Create a native **Instruction callback** from a JS function.
@@ -1549,17 +1802,17 @@ class QBDI {
      *       >>>   return VMAction.CONTINUE;
      *       >>> });
      *
-     * @param {InstCallback} cbk an instruction callback (ex: function(vm, gpr, fpr, data) {};)
+     * @param {InstCallbackRaw} cbk an instruction callback (ex: function(vm, gpr, fpr, data) {};)
      *
      * @return an native InstCallback
      */
     newInstCallback(cbk) {
-        if (typeof(cbk) !== 'function' || cbk.length !== 4) {
+        if (typeof (cbk) !== 'function' || cbk.length !== 4) {
             return undefined;
         }
         // Use a closure to provide object
         var vm = this;
-        var jcbk = function(vmPtr, gprPtr, fprPtr, dataPtr) {
+        var jcbk = function (vmPtr, gprPtr, fprPtr, dataPtr) {
             var gpr = new GPRState(gprPtr);
             var fpr = new FPRState(fprPtr);
             var data = vm._getUserData(dataPtr);
@@ -1567,6 +1820,16 @@ class QBDI {
         }
         return new NativeCallback(jcbk, 'int', ['pointer', 'pointer', 'pointer', 'pointer']);
     }
+
+    /**
+     * This callback is displayed as part of the Requester class.
+     * @callback VMCallbackRaw
+     * @param {VM} vm
+     * @param {VMState} state
+     * @param {GPRState} gpr
+     * @param {FPRState} fpr
+     * @param {*} data
+     */
 
     /**
      * Create a native **VM callback** from a JS function.
@@ -1579,17 +1842,17 @@ class QBDI {
      *       >>>   return VMAction.CONTINUE;
      *       >>> });
      *
-     * @param {VMCallback} cbk a VM callback (ex: function(vm, state, gpr, fpr, data) {};)
+     * @param {VMCallbackRaw} cbk a VM callback (ex: function(vm, state, gpr, fpr, data) {};)
      *
      * @return a native VMCallback
      */
     newVMCallback(cbk) {
-        if (typeof(cbk) !== 'function' || cbk.length !== 5) {
+        if (typeof (cbk) !== 'function' || cbk.length !== 5) {
             return undefined;
         }
         // Use a closure to provide object and a parsed event
         var vm = this;
-        var jcbk = function(vmPtr, state, gprPtr, fprPtr, dataPtr) {
+        var jcbk = function (vmPtr, state, gprPtr, fprPtr, dataPtr) {
             var s = vm._parseVMState(state);
             var gpr = new GPRState(gprPtr);
             var fpr = new FPRState(fprPtr);
@@ -1606,14 +1869,15 @@ class QBDI {
      * with the ``.toRword()`` interface (like ``NativePointer`` or ``UInt64``).
      *
      * Example:
-     *       >>> var vm = new QBDI();
+     *       >>> var vm = new VM();
      *       >>> var state = vm.getGPRState();
-     *       >>> vm.allocateVirtualStack(state, 0x1000000);
-     *       >>> var aFunction = Module.findExportByName(null, "Secret");
+     *       >>> var stackTopPtr = vm.allocateVirtualStack(state, 0x1000000);
+     *       >>> var aFunction = Module.findGlobalExportByName("Secret");
      *       >>> vm.addInstrumentedModuleFromAddr(aFunction);
      *       >>> vm.call(aFunction, [42]);
+     *       >>> vm.alignedFree(stackTopPtr);
      *
-     * @param {String|Number}           address function address (or Frida ``NativePointer``).
+     * @param {String|Number|NativePointer}           address function address (or Frida ``NativePointer``).
      * @param {StringArray|NumberArray} [args]  optional list of arguments
      */
     call(address, args) {
@@ -1621,17 +1885,54 @@ class QBDI {
         var fargs = this._formatVAArgs(args);
         var vm = this.#vm;
         // Use this weird construction to work around a bug in the duktape runtime
-        var _call = function(a, b, c, d, e, f, g, h, i, j) {
+        var _call = function (a, b, c, d, e, f, g, h, i, j) {
             var retPtr = Memory.alloc(Process.pointerSize);
             var res = QBDI_C.call(vm, retPtr, address, fargs[0], a, b, c, d, e, f, g, h, i, j);
             if (res == false) {
                 throw new EvalError('Execution failed');
             }
-            return ptr(Memory.readRword(retPtr));
+            return ptr(retPtr.readRword());
         }
         return _call.apply(null, fargs[1]);
     }
 
+    /**
+     * Call a function by its address (or through a Frida ``NativePointer``).
+     * QBDI will allocate his one stack to run, while the instrumented code will
+     * use the top of the current stack.
+     *
+     * Arguments can be provided, but their types need to be compatible
+     * with the ``.toRword()`` interface (like ``NativePointer`` or ``UInt64``).
+     *
+     * Example:
+     *       >>> var vm = new VM();
+     *       >>> var state = vm.getGPRState();
+     *       >>> var aFunction = Module.findGlobalExportByName("Secret");
+     *       >>> vm.addInstrumentedModuleFromAddr(aFunction);
+     *       >>> vm.switchStackAndCall(aFunction, [42]);
+     *
+     * @param {String|Number|NativePointer}           address function address (or Frida ``NativePointer``).
+     * @param {StringArray|NumberArray} [args]  optional list of arguments
+     * @param {String|Number}           [stackSize] stack size for the engine.
+     */
+    switchStackAndCall(address, args, stackSize) {
+        if (stackSize === null || stackSize === undefined) {
+            stackSize = 0x20000;
+        }
+        address = address.toRword();
+        var fargs = this._formatVAArgs(args);
+        var vm = this.#vm;
+        // Use this weird construction to work around a bug in the duktape runtime
+        var _scall = function (a, b, c, d, e, f, g, h, i, j) {
+            var retPtr = Memory.alloc(Process.pointerSize);
+            var res = QBDI_C.switchStackAndCall(vm, retPtr, address, stackSize, fargs[0], a, b, c, d, e, f, g, h, i, j);
+            if (res == false) {
+                throw new EvalError('Execution failed');
+            }
+            return ptr(retPtr.readRword());
+        }
+        return _scall.apply(null, fargs[1]);
+    }
 
     ////////////////////
     // private method //
@@ -1639,13 +1940,13 @@ class QBDI {
 
     _parseStructDesc(ptr) {
         var desc = {};
-        desc.size = Memory.readU32(ptr);
+        desc.size = ptr.readU32();
         ptr = ptr.add(4);
-        desc.items = Memory.readU32(ptr);
+        desc.items = ptr.readU32();
         ptr = ptr.add(4);
         desc.offsets = [];
         for (var i = 0; i < desc.items; i++) {
-            var offset = Memory.readU32(ptr);
+            var offset = ptr.readU32();
             ptr = ptr.add(4);
             desc.offsets.push(offset);
         }
@@ -1656,7 +1957,7 @@ class QBDI {
     _initVM() {
         var vmPtr = Memory.alloc(Process.pointerSize);
         QBDI_C.initVM(vmPtr, NULL, NULL, 0);
-        return Memory.readPointer(vmPtr);
+        return vmPtr.readPointer();
     }
 
     _terminateVM(v) {
@@ -1690,7 +1991,7 @@ class QBDI {
 
         var iid = fn(dataPtr);
 
-        this.#userDataPtrMap[dataPtr] = {userdata: data, id: iid};
+        this.#userDataPtrMap[dataPtr] = { userdata: data, id: iid };
         this.#userDataIIdMap[iid] = [dataPtr];
         return iid;
     }
@@ -1763,20 +2064,35 @@ class QBDI {
         return [argsCnt, fargs];
     }
 
+
+    /**
+     * @typedef {Object} MemoryAccess
+     * @property {number} instAddress
+     * @property {number} accessAddress
+     * @property {number} value
+     * @property {number} size
+     * @property {number} type
+     * @property {number} flags
+     */
+
+    /**
+     * @param {*} ptr
+     * @returns {MemoryAccess}
+     */
     _parseMemoryAccess(ptr) {
         var access = {};
         var p = ptr.add(this.#instAnalysisStructDesc.offsets[0]);
-        access.instAddress = Memory.readRword(p);
+        access.instAddress = p.readRword();
         p = ptr.add(this.#memoryAccessDesc.offsets[1]);
-        access.accessAddress = Memory.readRword(p);
+        access.accessAddress = p.readRword();
         p = ptr.add(this.#memoryAccessDesc.offsets[2]);
-        access.value = Memory.readRword(p);
+        access.value = p.readRword();
         p = ptr.add(this.#memoryAccessDesc.offsets[3]);
-        access.size = Memory.readU16(p);
+        access.size = p.readU16();
         p = ptr.add(this.#memoryAccessDesc.offsets[4]);
-        access.type = Memory.readU8(p);
+        access.type = p.readU8();
         p = ptr.add(this.#memoryAccessDesc.offsets[5]);
-        access.flags = Memory.readU8(p);
+        access.flags = p.readU8();
         Object.freeze(access);
         return access;
     }
@@ -1788,7 +2104,7 @@ class QBDI {
         if (accessPtr.isNull()) {
             return [];
         }
-        var cnt = Memory.readU32(sizePtr);
+        var cnt = sizePtr.readU32();
         var sSize = this.#memoryAccessDesc.size;
         var p = accessPtr;
         for (var i = 0; i < cnt; i++) {
@@ -1800,149 +2116,207 @@ class QBDI {
         return accesses;
     }
 
+    /**
+     * @typedef {Object} VMState
+     * @property {number} event
+     * @property {number} sequenceStart
+     * @property {number} sequenceEnd
+     * @property {number} basicBlockStart
+     * @property {number} basicBlockEnd
+     * @property {number} lastSignal
+     */
+
+    /**
+     * @param {*} ptr
+     * @returns {VMState}
+     */
     _parseVMState(ptr) {
         var state = {};
         var p = ptr.add(this.#instAnalysisStructDesc.offsets[0]);
-        state.event = Memory.readU8(p);
+        state.event = p.readU8();
         p = ptr.add(this.#vmStateStructDesc.offsets[1]);
-        state.sequenceStart = Memory.readRword(p);
+        state.sequenceStart = p.readRword();
         p = ptr.add(this.#vmStateStructDesc.offsets[2]);
-        state.sequenceEnd = Memory.readRword(p);
+        state.sequenceEnd = p.readRword();
         p = ptr.add(this.#vmStateStructDesc.offsets[3]);
-        state.basicBlockStart = Memory.readRword(p);
+        state.basicBlockStart = p.readRword();
         p = ptr.add(this.#vmStateStructDesc.offsets[4]);
-        state.basicBlockEnd = Memory.readRword(p);
+        state.basicBlockEnd = p.readRword();
         p = ptr.add(this.#vmStateStructDesc.offsets[5]);
-        state.lastSignal = Memory.readRword(p);
+        state.lastSignal = p.readRword();
         Object.freeze(state);
         return state;
     }
 
+    /**
+     * @typedef {Object} OperandAnalysis
+     * @property {number} type
+     * @property {number} flag
+     * @property {number} value
+     * @property {number} size
+     * @property {number} regOff
+     * @property {number} regCtxIdx
+     * @property {string|null} regName
+     * @property {number} regAccess
+     */
+
+    /**
+     * @param {*} ptr
+     * @returns {OperandAnalysis}
+     */
     _parseOperandAnalysis(ptr) {
         var analysis = {};
         var p = ptr.add(this.#instAnalysisStructDesc.offsets[0]);
-        analysis.type = Memory.readU32(p);
+        analysis.type = p.readU32();
         p = ptr.add(this.#operandAnalysisStructDesc.offsets[1]);
-        analysis.flag = Memory.readU8(p);
+        analysis.flag = p.readU8();
         p = ptr.add(this.#operandAnalysisStructDesc.offsets[2]);
-        analysis.value = Memory.readRword(p);
+        analysis.value = p.readSword();
         p = ptr.add(this.#operandAnalysisStructDesc.offsets[3]);
-        analysis.size = Memory.readU8(p);
+        analysis.size = p.readU8();
         p = ptr.add(this.#operandAnalysisStructDesc.offsets[4]);
-        analysis.regOff = Memory.readU8(p);
+        analysis.regOff = p.readU8();
         p = ptr.add(this.#operandAnalysisStructDesc.offsets[5]);
-        analysis.regCtxIdx = Memory.readS16(p);
+        analysis.regCtxIdx = p.readS16();
         p = ptr.add(this.#operandAnalysisStructDesc.offsets[6]);
-        var regNamePtr = Memory.readPointer(p);
+        var regNamePtr = p.readPointer();
         if (regNamePtr.isNull()) {
             analysis.regName = undefined;
         } else {
-            analysis.regName = Memory.readCString(regNamePtr);
+            analysis.regName = regNamePtr.readCString();
         }
         p = ptr.add(this.#operandAnalysisStructDesc.offsets[7]);
-        analysis.regAccess = Memory.readU8(p);
+        analysis.regAccess = p.readU8();
         Object.freeze(analysis);
         return analysis;
     }
 
+    /**
+     * @typedef {Object} InstAnalysis
+     * @property {string|null} mnemonic
+     * @property {string|null} disassembly
+     * @property {number} address
+     * @property {number} instSize
+     * @property {boolean} affectControlFlow
+     * @property {boolean} isBranch
+     * @property {boolean} isCall
+     * @property {boolean} isReturn
+     * @property {boolean} isCompare
+     * @property {boolean} isPredicable
+     * @property {boolean} isMoveImm
+     * @property {boolean} mayLoad
+     * @property {boolean} mayStore
+     * @property {number} loadSize
+     * @property {number} storeSize
+     * @property {number} condition
+     * @property {number} flagsAccess
+     * @property {Array<OperandAnalysis>} operands
+     * @property {string|null} symbolName
+     * @property {string|null} symbol
+     * @property {number} symbolOffset
+     * @property {string|null} moduleName
+     * @property {string|null} module
+     * @property {string|null} cpuMode
+     * @property {number} patchSize
+     * @property {number} patchInstOffset
+     * @property {number} patchInstSize
+     * @property {number} analysisType
+     */
+
+    /**
+     * @param {*} ptr
+     * @returns {InstAnalysis}
+     */
     _parseInstAnalysis(ptr) {
         var analysis = {};
-        var p = ptr.add(this.#instAnalysisStructDesc.offsets[0]);
-        analysis.mnemonic = Memory.readCString(Memory.readPointer(p));
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[1]);
-        analysis.disassembly = Memory.readCString(Memory.readPointer(p));
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[2]);
-        analysis.address = Memory.readRword(p);
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[3]);
-        analysis.instSize = Memory.readU32(p);
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[4]);
-        analysis.affectControlFlow = Memory.readU8(p) == true;
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[5]);
-        analysis.isBranch = Memory.readU8(p) == true;
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[6]);
-        analysis.isCall = Memory.readU8(p) == true;
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[7]);
-        analysis.isReturn = Memory.readU8(p) == true;
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[8]);
-        analysis.isCompare = Memory.readU8(p) == true;
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[9]);
-        analysis.isPredicable = Memory.readU8(p) == true;
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[10]);
-        analysis.mayLoad = Memory.readU8(p) == true;
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[11]);
-        analysis.mayStore = Memory.readU8(p) == true;
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[12]);
-        analysis.loadSize = Memory.readU32(p);
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[13]);
-        analysis.storeSize = Memory.readU32(p);
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[14]);
-        analysis.condition = Memory.readU8(p);
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[15]);
-        analysis.flagsAccess = Memory.readU8(p);
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[16]);
-        var numOperands = Memory.readU8(p);
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[17]);
-        var operandsPtr = Memory.readPointer(p);
-        analysis.operands = new Array(numOperands);
-        for (var i = 0; i < numOperands; i++) {
-            analysis.operands[i] = this._parseOperandAnalysis(operandsPtr);
-            operandsPtr = operandsPtr.add(this.#operandAnalysisStructDesc.size);
+        var p = ptr.add(this.#instAnalysisStructDesc.offsets[27]);
+        var analysisType = p.readU16();
+
+        if ((analysisType & AnalysisType.ANALYSIS_INSTRUCTION) != 0) {
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[0]);
+          analysis.mnemonic = p.readPointer().readCString();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[2]);
+          analysis.address = p.readRword();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[3]);
+          analysis.instSize = p.readU32();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[4]);
+          analysis.affectControlFlow = p.readU8() == true;
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[5]);
+          analysis.isBranch = p.readU8() == true;
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[6]);
+          analysis.isCall = p.readU8() == true;
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[7]);
+          analysis.isReturn = p.readU8() == true;
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[8]);
+          analysis.isCompare = p.readU8() == true;
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[9]);
+          analysis.isPredicable = p.readU8() == true;
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[10]);
+          analysis.isMoveImm = p.readU8() == true;
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[11]);
+          analysis.mayLoad = p.readU8() == true;
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[12]);
+          analysis.mayStore = p.readU8() == true;
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[13]);
+          analysis.loadSize = p.readU32();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[14]);
+          analysis.storeSize = p.readU32();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[15]);
+          analysis.condition = p.readU8();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[22]);
+          analysis.cpuMode = p.readU8();
         }
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[18]);
-        var symbolPtr = Memory.readPointer(p);
-        if (!symbolPtr.isNull()) {
-            analysis.symbol = Memory.readCString(symbolPtr);
-        } else {
-            analysis.symbol = "";
+        if ((analysisType & AnalysisType.ANALYSIS_DISASSEMBLY) != 0) {
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[1]);
+          analysis.disassembly = p.readPointer().readCString();
         }
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[19]);
-        analysis.symbolOffset = Memory.readU32(p);
-        p = ptr.add(this.#instAnalysisStructDesc.offsets[20]);
-        var modulePtr = Memory.readPointer(p);
-        if (!modulePtr.isNull()) {
-            analysis.module = Memory.readCString(modulePtr);
-        } else {
-            analysis.module = "";
+        if ((analysisType & AnalysisType.ANALYSIS_OPERANDS) != 0) {
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[16]);
+          analysis.flagsAccess = p.readU8();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[17]);
+          var numOperands = p.readU8();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[18]);
+          var operandsPtr = p.readPointer();
+          analysis.operands = new Array(numOperands);
+          for (var i = 0; i < numOperands; i++) {
+              analysis.operands[i] = this._parseOperandAnalysis(operandsPtr);
+              operandsPtr = operandsPtr.add(this.#operandAnalysisStructDesc.size);
+          }
         }
+        if ((analysisType & AnalysisType.ANALYSIS_SYMBOL) != 0) {
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[19]);
+          var symbolPtr = p.readPointer();
+          if (!symbolPtr.isNull()) {
+              analysis.symbolName = symbolPtr.readCString();
+          } else {
+              analysis.symbolName = "";
+          }
+          analysis.symbol = analysis.symbolName; // deprecated Name
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[20]);
+          analysis.symbolOffset = p.readU32();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[21]);
+          var modulePtr = p.readPointer();
+          if (!modulePtr.isNull()) {
+              analysis.moduleName = modulePtr.readCString();
+          } else {
+              analysis.moduleName = "";
+          }
+          analysis.module = analysis.moduleName; // deprecated Name
+        }
+        if ((analysisType & AnalysisType.ANALYSIS_JIT) != 0) {
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[23]);
+          analysis.patchAddress = p.readRword();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[24]);
+          analysis.patchSize = p.readU16();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[25]);
+          analysis.patchInstOffset = p.readU16();
+          p = ptr.add(this.#instAnalysisStructDesc.offsets[26]);
+          analysis.patchInstSize = p.readU16();
+        }
+
         Object.freeze(analysis);
         return analysis;
     }
 
 };
 
-
-// nodejs export
-if (typeof(module) !== "undefined") {
-    var exports = module.exports = {
-        AnalysisType: AnalysisType,
-        ConditionType: ConditionType,
-        GPR_NAMES: GPR_NAMES,
-        InstPosition: InstPosition,
-        InstrRuleDataCBK: InstrRuleDataCBK,
-        MemoryAccessFlags: MemoryAccessFlags,
-        MemoryAccessType: MemoryAccessType,
-        OperandFlag: OperandFlag,
-        OperandType: OperandType,
-        Options: Options,
-        QBDI: QBDI,
-        QBDI_LIB_FULLPATH: QBDI_LIB_FULLPATH,
-        REG_PC: REG_PC,
-        REG_RETURN: REG_RETURN,
-        REG_SP: REG_SP,
-        RegisterAccessType: RegisterAccessType,
-        SyncDirection: SyncDirection,
-        VMAction: VMAction,
-        VMError: VMError,
-        VMEvent: VMEvent,
-        rword: rword,
-
-        // Allow automagic exposure of QBDI interface in nodejs GLOBAL
-        import: function() {
-            for (var key in this) {
-                if (key !== "import") {
-                    global[key] = this[key];
-                }
-            }
-        }
-    };
-}

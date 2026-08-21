@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@
 #include <cstdint>
 #include <stdio.h>
 
-#include <catch2/catch.hpp>
-#include "Memory.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include "QBDI/Memory.hpp"
 
 TEST_CASE("AllocAlignedTest-CorrectSize") {
   const static size_t size = 1000;

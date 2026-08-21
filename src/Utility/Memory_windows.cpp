@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,10 @@
 #include "QBDI/Memory.hpp"
 #include "Utility/LogSys.h"
 
-#include <Psapi.h>
+// clang-format off
 #include <Windows.h>
+#include <Psapi.h>
+// clang-format on
 #ifdef UNICODE
 #include <codecvt>
 #include <locale>
@@ -30,9 +32,9 @@
 
 namespace QBDI {
 
-#define PROT_ISREAD(PROT) ((PROT)&0xEE)
-#define PROT_ISWRITE(PROT) ((PROT)&0xCC)
-#define PROT_ISEXEC(PROT) ((PROT)&0xF0)
+#define PROT_ISREAD(PROT) ((PROT) & 0xEE)
+#define PROT_ISWRITE(PROT) ((PROT) & 0xCC)
+#define PROT_ISEXEC(PROT) ((PROT) & 0xF0)
 
 std::vector<MemoryMap> getCurrentProcessMaps(bool full_path) {
   return getRemoteProcessMaps(GetCurrentProcessId(), full_path);

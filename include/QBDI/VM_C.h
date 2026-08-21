@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #define QBDI_VM_C_H_
 
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "QBDI/Callback.h"
@@ -163,6 +164,7 @@ QBDI_EXPORT bool qbdi_run(VMInstanceRef instance, rword start, rword stop);
  *     qbdi_addInstrumentedModuleFromAddr(vm, funcPtr);
  *     rword retVal;
  *     qbdi_call(vm, &retVal, funcPtr, 1, 42);
+ *     qbdi_alignedFree(fakestack);
  *
  */
 QBDI_EXPORT bool qbdi_call(VMInstanceRef instance, rword *retval,
@@ -196,6 +198,76 @@ QBDI_EXPORT bool qbdi_callV(VMInstanceRef instance, rword *retval,
 QBDI_EXPORT bool qbdi_callA(VMInstanceRef instance, rword *retval,
                             rword function, uint32_t argNum, const rword *args);
 
+/*! Switch the stack and call a function using the DBI (and its current
+ *  state).
+ *  This method will allocate a new stack and switch to this stack. The
+ *  remaining space on the current stack will be use by the called method.
+ *  This method mustn't be called if the VM already runs.
+ *  The stack pointer in the state must'nt be used after the end of this
+ *  method.
+ *
+ * @param[in] instance   VM instance.
+ * @param[in] [retval]   Pointer to the returned value (optional).
+ * @param[in] function   Address of the function start instruction.
+ * @param[in] stackSize  The size of the stack for the engine.
+ * @param[in] argNum     The number of arguments in the variadic list.
+ * @param[in] ...        A variadic list of arguments.
+ *
+ * @return  True if at least one block has been executed.
+ *
+ * @details Example:
+ *
+ *     // perform (with QBDI) a call similar to (*funcPtr)(42);
+ *     VMInstanceRef vm;
+ *     qbdi_initVM(&vm, NULL, NULL);
+ *     GPRState* gprState = qbdi_getGPRState(vm);
+ *     qbdi_addInstrumentedModuleFromAddr(vm, funcPtr);
+ *     rword retVal;
+ *     qbdi_switchStackAndCall(vm, &retVal, funcPtr, 0x20000, 1, 42);
+ *
+ */
+QBDI_EXPORT bool qbdi_switchStackAndCall(VMInstanceRef instance, rword *retval,
+                                         rword function, uint32_t stackSize,
+                                         uint32_t argNum, ...);
+
+/*! Switch the stack and call a function using the DBI (and its current
+ *  state).
+ *  This method mustn't be called if the VM already runs.
+ *  The stack pointer in the state must'nt be used after the end of this
+ *  method.
+ *
+ * @param[in] instance   VM instance.
+ * @param[in] [retval]   Pointer to the returned value (optional).
+ * @param[in] function   Address of the function start instruction.
+ * @param[in] stackSize  The size of the stack for the engine.
+ * @param[in] argNum     The number of arguments in the variadic list.
+ * @param[in] ap         An stdarg va_list object.
+ *
+ * @return  True if at least one block has been executed.
+ */
+QBDI_EXPORT bool qbdi_switchStackAndCallV(VMInstanceRef instance, rword *retval,
+                                          rword function, uint32_t stackSize,
+                                          uint32_t argNum, va_list ap);
+
+/*! Switch the stack and call a function using the DBI (and its current
+ *  state).
+ *  This method mustn't be called if the VM already runs.
+ *  The stack pointer in the state must'nt be used after the end of this
+ *  method.
+ *
+ * @param[in] instance   VM instance.
+ * @param[in] [retval]   Pointer to the returned value (optional).
+ * @param[in] function   Address of the function start instruction.
+ * @param[in] stackSize  The size of the stack for the engine.
+ * @param[in] argNum     The number of arguments in the variadic list.
+ * @param[in] args       Arguments as an array of rword values.
+ *
+ * @return  True if at least one block has been executed.
+ */
+QBDI_EXPORT bool qbdi_switchStackAndCallA(VMInstanceRef instance, rword *retval,
+                                          rword function, uint32_t stackSize,
+                                          uint32_t argNum, const rword *args);
+
 /*! Obtain the current general purpose register state.
  *
  * @param[in] instance  VM instance.
@@ -212,6 +284,15 @@ QBDI_EXPORT GPRState *qbdi_getGPRState(VMInstanceRef instance);
  */
 QBDI_EXPORT FPRState *qbdi_getFPRState(VMInstanceRef instance);
 
+/*! Obtain the backuped value of errno, if the option
+ * OPT_DISABLE_ERRNO_BACKUP is not enable.
+ *
+ * @param[in] instance  VM instance.
+ *
+ * @return the backupped value of errno
+ */
+QBDI_EXPORT uint32_t qbdi_getErrno(VMInstanceRef instance);
+
 /*! Set the GPR state
  *
  * @param[in] instance  VM instance.
@@ -227,6 +308,13 @@ QBDI_EXPORT void qbdi_setGPRState(VMInstanceRef instance, GPRState *gprState);
  *                      state.
  */
 QBDI_EXPORT void qbdi_setFPRState(VMInstanceRef instance, FPRState *fprState);
+
+/*! Set the backuped value of errno, if the option
+ * OPT_DISABLE_ERRNO_BACKUP is not enable.
+ *
+ * @param[in] backupErrno the value to set
+ */
+QBDI_EXPORT void qbdi_setErrno(VMInstanceRef instance, uint32_t backupErrno);
 
 /*! Get the current Options
  *
@@ -283,10 +371,11 @@ QBDI_EXPORT uint32_t qbdi_addInstrRuleRange(VMInstanceRef instance, rword start,
  *                      (QBDI_PREINST / QBDI_POSTINST).
  * @param[in] cbk       A function pointer to the callback
  * @param[in] data      User defined data passed to the callback.
+ * @param[in] priority  Priority of the callback
  */
 QBDI_EXPORT void qbdi_addInstrRuleData(InstrRuleDataVec cbks,
                                        InstPosition position, InstCallback cbk,
-                                       void *data);
+                                       void *data, int priority);
 
 /*! Register a callback event for every memory access matching the type bitfield
  * made by the instructions.
@@ -296,13 +385,15 @@ QBDI_EXPORT void qbdi_addInstrRuleData(InstrRuleDataVec cbks,
  *                       QBDI_MEMORY_WRITE or both (QBDI_MEMORY_READ_WRITE).
  * @param[in] cbk        A function pointer to the callback.
  * @param[in] data       User defined data passed to the callback.
+ * @param[in] priority   The priority of the callback.
  *
  * @return The id of the registered instrumentation (or QBDI_INVALID_EVENTID
  * in case of failure).
  */
 QBDI_EXPORT uint32_t qbdi_addMemAccessCB(VMInstanceRef instance,
                                          MemoryAccessType type,
-                                         InstCallback cbk, void *data);
+                                         InstCallback cbk, void *data,
+                                         int priority);
 
 /*! Add a virtual callback which is triggered for any memory access at a
  * specific address matching the access type. Virtual callbacks are called via
@@ -352,13 +443,15 @@ QBDI_EXPORT uint32_t qbdi_addMemRangeCB(VMInstanceRef instance, rword start,
  *                       (QBDI_PREINST / QBDI_POSTINST).
  * @param[in] cbk        A function pointer to the callback.
  * @param[in] data       User defined data passed to the callback.
+ * @param[in] priority   The priority of the callback.
  *
  * @return The id of the registered instrumentation (or QBDI_INVALID_EVENTID
  * in case of failure).
  */
 QBDI_EXPORT uint32_t qbdi_addMnemonicCB(VMInstanceRef instance,
                                         const char *mnemonic, InstPosition pos,
-                                        InstCallback cbk, void *data);
+                                        InstCallback cbk, void *data,
+                                        int priority);
 
 /*! Register a callback event for a specific instruction event.
  *
@@ -367,12 +460,13 @@ QBDI_EXPORT uint32_t qbdi_addMnemonicCB(VMInstanceRef instance,
  *                      (QBDI_PREINST / QBDI_POSTINST).
  * @param[in] cbk       A function pointer to the callback.
  * @param[in] data      User defined data passed to the callback.
+ * @param[in] priority  The priority of the callback.
  *
  * @return The id of the registered instrumentation (or QBDI_INVALID_EVENTID
  * in case of failure).
  */
 QBDI_EXPORT uint32_t qbdi_addCodeCB(VMInstanceRef instance, InstPosition pos,
-                                    InstCallback cbk, void *data);
+                                    InstCallback cbk, void *data, int priority);
 
 /*! Register a callback for when a specific address is executed.
  *
@@ -382,13 +476,14 @@ QBDI_EXPORT uint32_t qbdi_addCodeCB(VMInstanceRef instance, InstPosition pos,
  *                      (QBDI_PREINST / QBDI_POSTINST).
  * @param[in] cbk       A function pointer to the callback.
  * @param[in] data      User defined data passed to the callback.
+ * @param[in] priority  The priority of the callback.
  *
  * @return The id of the registered instrumentation (or QBDI_INVALID_EVENTID
  * in case of failure).
  */
 QBDI_EXPORT uint32_t qbdi_addCodeAddrCB(VMInstanceRef instance, rword address,
                                         InstPosition pos, InstCallback cbk,
-                                        void *data);
+                                        void *data, int priority);
 
 /*! Register a callback for when a specific address range is executed.
  *
@@ -399,13 +494,15 @@ QBDI_EXPORT uint32_t qbdi_addCodeAddrCB(VMInstanceRef instance, rword address,
  *                   (QBDI_PREINST / QBDI_POSTINST).
  * @param[in] cbk       A function pointer to the callback.
  * @param[in] data      User defined data passed to the callback.
+ * @param[in] priority  The priority of the callback.
  *
  * @return The id of the registered instrumentation (or QBDI_INVALID_EVENTID
  * in case of failure).
  */
 QBDI_EXPORT uint32_t qbdi_addCodeRangeCB(VMInstanceRef instance, rword start,
                                          rword end, InstPosition pos,
-                                         InstCallback cbk, void *data);
+                                         InstCallback cbk, void *data,
+                                         int priority);
 
 /*! Register a callback event for a specific VM event.
  *
@@ -464,6 +561,24 @@ QBDI_EXPORT const InstAnalysis *
 qbdi_getCachedInstAnalysis(const VMInstanceRef instance, rword address,
                            AnalysisType type);
 
+/*! Obtain the analysis of a JITed instruction. Analysis results are cached
+ * in the VM. The validity of the returned pointer is only guaranteed until
+ * the end of the callback or a call to a noconst method of the VM object.
+ * This API may be used to determine if a given address of the current
+ * process memory correspond to the JIT patch from this VM. Note that this
+ * call may allocate memory.
+ *
+ * @param[in] instance     VM instance.
+ * @param[in] address      The JIT address
+ * @param[in] type         Properties to retrieve during analysis.
+ *
+ * @return A InstAnalysis structure containing the analysis result.
+ *    null if the address isn't a valid
+ */
+QBDI_EXPORT const InstAnalysis *
+qbdi_getJITInstAnalysis(const VMInstanceRef instance, rword address,
+                        AnalysisType type);
+
 /*! Add instrumentation rules to log memory access using inline instrumentation
  and
  *  instruction shadows.
@@ -498,7 +613,7 @@ QBDI_EXPORT MemoryAccess *qbdi_getInstMemoryAccess(VMInstanceRef instance,
  *
  *  @param[in]  instance     VM instance.
  *  @param[out] size         Will be set to the number of elements in the
- * returned array.
+ *                           returned array.
  *
  * @return An array of memory accesses made by the basic block.
  */
@@ -530,6 +645,25 @@ QBDI_EXPORT void qbdi_clearCache(VMInstanceRef instance, rword start,
  * @param[in] instance     VM instance.
  */
 QBDI_EXPORT void qbdi_clearAllCache(VMInstanceRef instance);
+
+/*! Get the number of ExecBlock in the cache. Each block uses 2 memory pages
+ * and some heap allocations.
+ *
+ * @param[in] instance     VM instance.
+ *
+ * @return  The number of ExecBlock in the cache.
+ */
+QBDI_EXPORT uint32_t qbdi_getNbExecBlock(const VMInstanceRef instance);
+
+/*! Reduce the cache to X ExecBlock. Note that this will try to purge the
+ * oldest ExecBlock first, but the block may be recreate if needed by
+ * followed execution.
+ *
+ * @param[in] instance  VM instance.
+ * @param[in] nb        The number of BasicBlock that should remains in the
+ *                      cache after call.
+ */
+QBDI_EXPORT void qbdi_reduceCacheTo(VMInstanceRef instance, uint32_t nb);
 
 #ifdef __cplusplus
 } // "C"

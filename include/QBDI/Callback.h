@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@
 #include "QBDI/Platform.h"
 #include "QBDI/State.h"
 #ifdef __cplusplus
+#include <functional>
 #include <vector>
 
 namespace QBDI {
@@ -32,14 +33,36 @@ namespace QBDI {
  */
 typedef enum {
   _QBDI_EI(CONTINUE) = 0,    /*!< The execution of the basic block continues. */
-  _QBDI_EI(BREAK_TO_VM) = 1, /*!< The execution breaks and returns to the VM
+  _QBDI_EI(SKIP_INST) = 1,   /*!< Available only with PREINST InstCallback.
+                              *   The instruction and the remained PREINST
+                              *   callbacks are skip. The execution continue
+                              *   with the POSTINST instruction.
+                              *
+                              *   We recommand to used this result with a low
+                              *   priority PREINST callback in order to emulate
+                              *   the instruction without skipping the POSTINST
+                              *   callback.
+                              */
+  _QBDI_EI(SKIP_PATCH) = 2,  /*!< Available only with InstCallback. The current
+                              *   instruction and the reminding callback (PRE
+                              *   and POST) are skip. The execution continues to
+                              *   the next instruction.
+                              *
+                              *   For instruction that change the instruction
+                              *   pointer (jump/call/ret), BREAK_TO_VM must be
+                              *   used insted of SKIP.
+                              *
+                              *   SKIP can break the record of MemoryAccess for
+                              *   the current instruction.
+                              */
+  _QBDI_EI(BREAK_TO_VM) = 3, /*!< The execution breaks and returns to the VM
                               *   causing a complete reevaluation of the
                               *   execution state. A BREAK_TO_VM is needed to
                               *   ensure that modifications of the Program
                               *   Counter or the program code are taken
                               *   into account.
                               */
-  _QBDI_EI(STOP) = 2,        /*!< Stops the execution of the program. This
+  _QBDI_EI(STOP) = 4,        /*!< Stops the execution of the program. This
                               *   causes the run function to return early.
                               */
 } VMAction;
@@ -70,6 +93,24 @@ typedef VMInstance *VMInstanceRef;
  */
 typedef VMAction (*InstCallback)(VMInstanceRef vm, GPRState *gprState,
                                  FPRState *fprState, void *data);
+#ifdef __cplusplus
+/*! Instruction callback lambda type.
+ *
+ * @param[in] vm            VM instance of the callback.
+ * @param[in] gprState      A structure containing the state of the
+ *                          General Purpose Registers. Modifying
+ *                          it affects the VM execution accordingly.
+ * @param[in] fprState      A structure containing the state of the
+ *                          Floating Point Registers. Modifying
+ *                          it affects the VM execution accordingly.
+ *
+ * @return                  The callback result used to signal subsequent
+ *                          actions the VM needs to take.
+ */
+typedef std::function<VMAction(VMInstanceRef vm, GPRState *gprState,
+                               FPRState *fprState)>
+    InstCbLambda;
+#endif
 
 /*! Position relative to an instruction.
  */
@@ -77,6 +118,31 @@ typedef enum {
   _QBDI_EI(PREINST) = 0, /*!< Positioned before the instruction.*/
   _QBDI_EI(POSTINST)     /*!< Positioned after the instruction.*/
 } InstPosition;
+
+/*! Priority of callback
+ *
+ * A callback with an higher priority will be call before a callback with a
+ * lower priority.
+ *
+ * ie:
+ *
+ * 1. CBpre(p = 10)
+ * 2. CBpre(p = 0)
+ * 3. CBpre(p = -10)
+ * 4. instrumented instruction
+ * 5. CBpost(p = 10)
+ * 6. CBpost(p = 0)
+ * 7. CBpost(p = -10)
+ *
+ * When the MemoryAccess API is used in a callback, the priority of the callback
+ * must not be greater than PRIORITY_MEMACCESS_LIMIT
+ */
+typedef enum {
+  _QBDI_EI(PRIORITY_DEFAULT) = 0, /*!< Default priority for callback */
+  _QBDI_EI(PRIORITY_MEMACCESS_LIMIT) =
+      0x1000000, /*!< Maximum priority if getInstMemoryAccess
+                  *   is used in the callback */
+} CallbackPriority;
 
 typedef enum {
   _QBDI_EI(NO_EVENT) = 0,
@@ -153,6 +219,25 @@ typedef struct {
 typedef VMAction (*VMCallback)(VMInstanceRef vm, const VMState *vmState,
                                GPRState *gprState, FPRState *fprState,
                                void *data);
+#ifdef __cplusplus
+/*! VM callback lambda type.
+ *
+ * @param[in] vm            VM instance of the callback.
+ * @param[in] vmState       A structure containing the current state of the VM.
+ * @param[in] gprState      A structure containing the state of the
+ *                          General Purpose Registers. Modifying
+ *                          it affects the VM execution accordingly.
+ * @param[in] fprState      A structure containing the state of the
+ *                          Floating Point Registers. Modifying
+ *                          it affects the VM execution accordingly.
+ *
+ * @return                  The callback result used to signal subsequent
+ *                          actions the VM needs to take.
+ */
+typedef std::function<VMAction(VMInstanceRef vm, const VMState *vmState,
+                               GPRState *gprState, FPRState *fprState)>
+    VMCbLambda;
+#endif
 
 static const uint16_t NO_REGISTRATION = 0xFFFF;
 static const uint16_t NOT_FOUND = 0xFFFF;
@@ -206,8 +291,23 @@ struct InstrRuleDataCBK {
                           */
   void *data;            /*!< User defined data which will be forward to cbk */
 
-  InstrRuleDataCBK(InstPosition position, InstCallback cbk, void *data)
-      : position(position), cbk(cbk), data(data) {}
+  InstCbLambda
+      lambdaCbk; /*!< Lambda callback. Replace cbk and data if not nullptr */
+
+  int priority; /*!< Priority of the callback */
+
+  InstrRuleDataCBK(InstPosition position, InstCallback cbk, void *data,
+                   int priority = PRIORITY_DEFAULT)
+      : position(position), cbk(cbk), data(data), lambdaCbk(nullptr),
+        priority(priority) {}
+  InstrRuleDataCBK(InstPosition position, const InstCbLambda &cbk,
+                   int priority = PRIORITY_DEFAULT)
+      : position(position), cbk(nullptr), data(nullptr), lambdaCbk(cbk),
+        priority(priority) {}
+  InstrRuleDataCBK(InstPosition position, InstCbLambda &&cbk,
+                   int priority = PRIORITY_DEFAULT)
+      : position(position), cbk(nullptr), data(nullptr),
+        lambdaCbk(std::move(cbk)), priority(priority) {}
 };
 
 using InstrRuleDataVec = std::vector<InstrRuleDataCBK> *;
@@ -241,6 +341,17 @@ typedef void (*InstrRuleCallbackC)(VMInstanceRef vm, const InstAnalysis *inst,
  */
 typedef std::vector<InstrRuleDataCBK> (*InstrRuleCallback)(
     VMInstanceRef vm, const InstAnalysis *inst, void *data);
+
+/*! Instrumentation rule callback lambda type.
+ *
+ * @param[in] vm     VM instance of the callback.
+ * @param[in] inst   AnalysisType of the current instrumented Instruction.
+ *
+ * @return           Return cbk to call when this instruction is run.
+ */
+typedef std::function<std::vector<InstrRuleDataCBK>(VMInstanceRef vm,
+                                                    const InstAnalysis *inst)>
+    InstrRuleCbLambda;
 
 } // QBDI::
 #endif

@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,17 +17,14 @@
  */
 
 #include "Patch/ExecBlockFlags.h"
-#include "Patch/InstInfo.h"
-#include "Patch/Types.h"
 
 namespace QBDI {
 
-const uint8_t defaultExecuteFlags = 0;
+const uint8_t defaultExecuteFlags = ExecBlockFlags::Default;
 
 uint8_t getExecBlockFlags(const llvm::MCInst &inst,
-                          const llvm::MCInstrInfo *MCII,
-                          const llvm::MCRegisterInfo *MRI) {
-  return 0;
+                          const QBDI::LLVMCPU &llvmcpu) {
+  return defaultExecuteFlags;
 }
 
 } // namespace QBDI

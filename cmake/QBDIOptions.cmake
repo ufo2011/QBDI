@@ -29,25 +29,41 @@ option(QBDI_STATIC_LIBRARY "Build the static library" ON)
 # Compile shared Library
 option(QBDI_SHARED_LIBRARY "Build the shared library" ON)
 
-# test
-option(QBDI_TEST "Compile tests" ON)
+if(NOT QBDI_PLATFORM_ANDROID)
+  # test
+  option(QBDI_TEST "Compile tests" ON)
 
-# benchmark
-option(QBDI_BENCHMARK "Compile benchmark" OFF)
+  # benchmark
+  option(QBDI_BENCHMARK "Compile benchmark" OFF)
+else()
+  set(QBDI_TEST OFF)
+  set(QBDI_BENCHMARK OFF)
+endif()
 
 # example
 option(QBDI_EXAMPLES "Compile examples" OFF)
 
+# docs
+option(QBDI_INCLUDE_DOCS "Include cmake docs" ON)
+
+# package
+option(QBDI_INCLUDE_PACKAGE "Include cmake package (for cpack)" ON)
+
+# package
+option(QBDI_INSTALL "Prepare install target" ON)
+
 # tools
+if(NOT (QBDI_PLATFORM_IOS OR QBDI_PLATFORM_ANDROID))
 
-if(NOT (QBDI_PLATFORM_WINDOWS OR QBDI_PLATFORM_IOS))
-  # QBDIPreload (not available on windows)
-  option(QBDI_TOOLS_QBDIPRELOAD
-         "Compile QBDIPRELOAD (not available on windows)" ON)
+  option(QBDI_TOOLS_QBDIPRELOAD "Compile QBDIPRELOAD" ON)
 
-  # Validator (compare execution between QBDIPreload and ptrace)
-  option(QBDI_TOOLS_VALIDATOR
-         "Compile the validator (need QBDI_TOOLS_QBDIPRELOAD)" OFF)
+  if(QBDI_PLATFORM_WINDOWS)
+    set(QBDI_TOOLS_VALIDATOR OFF)
+  else()
+    # Validator (compare execution between QBDIPreload and ptrace)
+    option(QBDI_TOOLS_VALIDATOR
+           "Compile the validator (need QBDI_TOOLS_QBDIPRELOAD)" OFF)
+  endif()
 else()
   set(QBDI_TOOLS_QBDIPRELOAD OFF)
   set(QBDI_TOOLS_VALIDATOR OFF)
@@ -57,7 +73,7 @@ endif()
 if(QBDI_BITS_64
    AND (QBDI_PLATFORM_WINDOWS
         OR QBDI_PLATFORM_LINUX
-        OR QBDI_PLATFORM_OSX))
+        OR QBDI_PLATFORM_MACOS))
   option(QBDI_TOOLS_PYQBDI "Compile python binding" ON)
 else()
   option(QBDI_TOOLS_PYQBDI "Compile python binding" OFF)
@@ -120,10 +136,8 @@ message(STATUS "QBDI_SHARED_LIBRARY:   ${QBDI_SHARED_LIBRARY}")
 message(STATUS "QBDI_TEST:             ${QBDI_TEST}")
 message(STATUS "QBDI_BENCHMARK:        ${QBDI_BENCHMARK}")
 message(STATUS "QBDI_EXAMPLES:         ${QBDI_EXAMPLES}")
-if(NOT (QBDI_PLATFORM_WINDOWS OR QBDI_PLATFORM_IOS))
-  message(STATUS "QBDI_TOOLS_QBDIPRELOAD: ${QBDI_TOOLS_QBDIPRELOAD}")
-  message(STATUS "QBDI_TOOLS_VALIDATOR:  ${QBDI_TOOLS_VALIDATOR}")
-endif()
+message(STATUS "QBDI_TOOLS_QBDIPRELOAD: ${QBDI_TOOLS_QBDIPRELOAD}")
+message(STATUS "QBDI_TOOLS_VALIDATOR:  ${QBDI_TOOLS_VALIDATOR}")
 message(STATUS "QBDI_TOOLS_PYQBDI:     ${QBDI_TOOLS_PYQBDI}")
 message(STATUS "QBDI_TOOLS_FRIDAQBDI:  ${QBDI_TOOLS_FRIDAQBDI}")
 
@@ -131,4 +145,6 @@ message(STATUS "")
 
 if(QBDI_LOG_DEBUG)
   set(QBDI_ENABLE_LOG_DEBUG 1)
+else()
+  set(QBDI_ENABLE_LOG_DEBUG 0)
 endif()

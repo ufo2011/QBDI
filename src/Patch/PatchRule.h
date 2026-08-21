@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,22 +21,23 @@
 #include <memory>
 #include <vector>
 
+#include "QBDI/State.h"
 #include "Patch/Patch.h"
-#include "Patch/PatchCondition.h"
 
 namespace llvm {
 class MCInst;
-class MCInstrInfo;
-class MCRegisterInfo;
 } // namespace llvm
 
 namespace QBDI {
+class LLVMCPU;
 class PatchGenerator;
+class PatchCondition;
+class RelocatableInst;
 
 /*! A patch rule written in PatchDSL.
  */
 class PatchRule {
-  PatchCondition::UniquePtr condition;
+  std::unique_ptr<PatchCondition> condition;
   std::vector<std::unique_ptr<PatchGenerator>> generators;
 
 public:
@@ -47,7 +48,7 @@ public:
    * @param[in] generators  A vector of PatchGenerator which will produce the
    *                        patch instructions.
    */
-  PatchRule(PatchCondition::UniquePtr &&condition,
+  PatchRule(std::unique_ptr<PatchCondition> &&condition,
             std::vector<std::unique_ptr<PatchGenerator>> &&generators);
 
   PatchRule(PatchRule &&);
@@ -57,39 +58,21 @@ public:
   /*! Determine wheter this rule applies by evaluating this rule condition on
    * the current context.
    *
-   * @param[in] inst      The current instruction.
-   * @param[in] address   The current instruction address.
-   * @param[in] instSize  The current instruction size.
-   * @param[in] MCII      An LLVM MC instruction info context.
+   * @param[in] patch     The Patch to check
+   * @param[in] llvmcpu   LLVMCPU object
    *
    * @return True if this patch condition evaluate to true on this context.
    */
-  bool canBeApplied(const llvm::MCInst &inst, rword address, rword instSize,
-                    const llvm::MCInstrInfo *MCII) const {
-    return condition->test(inst, address, instSize, MCII);
-  }
+  bool canBeApplied(const Patch &patch, const LLVMCPU &llvmcpu) const;
 
   /*! Generate this rule output patch by evaluating its generators on the
    * current context. Also handles the temporary register management for this
    * patch.
    *
-   * @param[in] inst      The current instruction.
-   * @param[in] address   The current instruction address.
-   * @param[in] instSize  The current instruction size.
-   * @param[in] MCII      A LLVM::MCInstrInfo classes used for internal
-   *                      architecture specific queries.
-   * @param[in] MRI       A LLVM::MCRegisterInfo classes used for internal
-   *                      architecture specific queries.
-   * @param[in] toMerge   An eventual previous patch which is to be merged
-   *                      with the current instruction. The patch is empty
-   *                      after the merge.
-   *
-   * @return A Patch which is composed of the input context and a series of
-   * RelocatableInst.
+   * @param[in] patch     The Patch where to apply the rule
+   * @param[in] llvmcpu   LLVMCPU object
    */
-  Patch generate(const llvm::MCInst &inst, rword address, rword instSize,
-                 const llvm::MCInstrInfo *MCII, const llvm::MCRegisterInfo *MRI,
-                 Patch *toMerge = nullptr) const;
+  void apply(Patch &patch, const LLVMCPU &llvmcpu) const;
 };
 
 } // namespace QBDI

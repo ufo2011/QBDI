@@ -50,10 +50,16 @@ State management
 .. doxygenfunction:: qbdi_getFPRState
     :project: QBDI_C
 
+.. doxygenfunction:: qbdi_getErrno
+    :project: QBDI_C
+
 .. doxygenfunction:: qbdi_setGPRState
     :project: QBDI_C
 
 .. doxygenfunction:: qbdi_setFPRState
+    :project: QBDI_C
+
+.. doxygenfunction:: qbdi_setErrno
     :project: QBDI_C
 
 .. _instrumentation-range-c:
@@ -138,10 +144,10 @@ MemoryAccess
 InstrRuleCallback
 ^^^^^^^^^^^^^^^^^
 
-.. doxygenfunction:: qbdi_addInstrRule(InstrRuleCallback cbk, AnalysisType type, void* data)
+.. doxygenfunction:: qbdi_addInstrRule
     :project: QBDI_C
 
-.. doxygenfunction:: qbdi_addInstrRuleRange(rword start, rword end, InstrRuleCallback cbk, AnalysisType type, void* data)
+.. doxygenfunction:: qbdi_addInstrRuleRange
     :project: QBDI_C
 
 Removal
@@ -168,6 +174,15 @@ Run
 .. doxygenfunction:: qbdi_callV
     :project: QBDI_C
 
+.. doxygenfunction:: qbdi_switchStackAndCall
+    :project: QBDI_C
+
+.. doxygenfunction:: qbdi_switchStackAndCallA
+    :project: QBDI_C
+
+.. doxygenfunction:: qbdi_switchStackAndCallV
+    :project: QBDI_C
+
 .. _instanalysis-getter-c:
 
 InstAnalysis
@@ -177,6 +192,9 @@ InstAnalysis
     :project: QBDI_C
 
 .. doxygenfunction:: qbdi_getCachedInstAnalysis
+    :project: QBDI_C
+
+.. doxygenfunction:: qbdi_getJITInstAnalysis
     :project: QBDI_C
 
 .. _memaccess-getter-c:
@@ -205,6 +223,12 @@ Cache management
 .. doxygenfunction:: qbdi_clearAllCache
     :project: QBDI_C
 
+.. doxygenfunction:: qbdi_getNbExecBlock
+    :project: QBDI_C
+
+.. doxygenfunction:: qbdi_reduceCacheTo
+    :project: QBDI_C
+
 .. _register-state-c:
 
 Register state
@@ -214,8 +238,8 @@ Register state
 
     An integer of the size of a register
 
-    - uint32_t for X86
-    - uint64_t for X86_64
+    - uint32_t for X86 and ARM
+    - uint64_t for X86_64 and AARCH64
 
 .. cpp:struct:: GPRState
 
@@ -223,16 +247,30 @@ Register state
 
     For X86 architecture:
 
-    .. include:: ../../include/QBDI/State.h
+    .. include:: ../../include/QBDI/arch/X86/State.h
        :start-after: SPHINX_X86_GPRSTATE_BEGIN
        :end-before: // SPHINX_X86_GPRSTATE_END
        :code:
 
     For X86_64 architecture:
 
-    .. include:: ../../include/QBDI/State.h
+    .. include:: ../../include/QBDI/arch/X86_64/State.h
        :start-after: SPHINX_X86_64_GPRSTATE_BEGIN
        :end-before: // SPHINX_X86_64_GPRSTATE_END
+       :code:
+
+    For ARM architecture:
+
+    .. include:: ../../include/QBDI/arch/ARM/State.h
+       :start-after: SPHINX_ARM_GPRSTATE_BEGIN
+       :end-before: // SPHINX_ARM_GPRSTATE_END
+       :code:
+
+    For AARCH64 architecture:
+
+    .. include:: ../../include/QBDI/arch/AARCH64/State.h
+       :start-after: SPHINX_AARCH64_GPRSTATE_BEGIN
+       :end-before: // SPHINX_AARCH64_GPRSTATE_END
        :code:
 
 .. cpp:struct:: FPRState
@@ -241,16 +279,30 @@ Register state
 
     For X86 architecture:
 
-    .. include:: ../../include/QBDI/State.h
+    .. include:: ../../include/QBDI/arch/X86/State.h
        :start-after: SPHINX_X86_FPRSTATE_BEGIN
        :end-before: // SPHINX_X86_FPRSTATE_END
        :code:
 
     For X86_64 architecture:
 
-    .. include:: ../../include/QBDI/State.h
+    .. include:: ../../include/QBDI/arch/X86_64/State.h
        :start-after: SPHINX_X86_64_FPRSTATE_BEGIN
        :end-before: // SPHINX_X86_64_FPRSTATE_END
+       :code:
+
+    For ARM architecture:
+
+    .. include:: ../../include/QBDI/arch/ARM/State.h
+       :start-after: SPHINX_ARM_FPRSTATE_BEGIN
+       :end-before: // SPHINX_ARM_FPRSTATE_END
+       :code:
+
+    For AARCH64 architecture:
+
+    .. include:: ../../include/QBDI/arch/AARCH64/State.h
+       :start-after: SPHINX_AARCH64_FPRSTATE_BEGIN
+       :end-before: // SPHINX_AARCH64_FPRSTATE_END
        :code:
 
 .. doxygenstruct:: MMSTReg
@@ -300,6 +352,9 @@ Callback
     An abstract type to append InstCallback for the current instruction
 
 .. doxygenenum:: InstPosition
+    :project: QBDI_C
+
+.. doxygenenum:: CallbackPriority
     :project: QBDI_C
 
 .. doxygenenum:: VMAction
@@ -401,7 +456,7 @@ Exploration
 
 .. doxygenstruct:: qbdi_MemoryMap
     :project: QBDI_C
-    :members: range, permission, name
+    :members: start, end, permission, name
 
 .. doxygenenum:: qbdi_Permission
     :project: QBDI_C
@@ -409,8 +464,85 @@ Exploration
 Other globals
 -------------
 
-.. doxygenenum:: Options
-    :project: QBDI_C
+.. cpp:enum:: Options
+
+  Note: some value are available only for some architecture
+
+  Values for all architecture :
+
+  .. cpp:enumerator:: NO_OPT
+
+      Default Value
+
+  .. cpp:enumerator:: OPT_DISABLE_FPR
+
+      Disable all operation on FPU (SSE, AVX, SIMD). May break the execution if the target use the FPU
+
+  .. cpp:enumerator:: OPT_DISABLE_OPTIONAL_FPR
+
+      Disable context switch optimisation when the target execblock doesn't used FPR
+
+  .. cpp:enumerator:: OPT_DISABLE_MEMORYACCESS_VALUE
+
+      Don't load memory access value
+
+  .. cpp:enumerator:: OPT_DISABLE_ERRNO_BACKUP
+
+      Don't save and restore errno
+
+  Values for AARCH64 and ARM only :
+
+  .. cpp:enumerator:: OPT_DISABLE_LOCAL_MONITOR
+
+      Disable the local monitor for instruction like strex
+
+  Values for AARCH64 only :
+
+  .. cpp:enumerator:: OPT_BYPASS_PAUTH
+
+      Disable pointeur authentication
+
+  .. cpp:enumerator:: OPT_ENABLE_BTI
+
+      Enable BTI on instrumented code
+
+  Values for ARM only :
+
+  .. cpp:enumerator:: OPT_DISABLE_D16_D31
+
+      Disable the used of D16-D31 register
+
+  .. cpp:enumerator:: OPT_ARMv4
+
+      Change between ARM and Thumb as an ARMv4 CPU
+
+  .. cpp:enumerator:: OPT_ARMv5T_6
+
+      Change between ARM and Thumb as an ARMv5T or ARMv6 CPU
+
+  .. cpp:enumerator:: OPT_ARMv7
+
+      Change between ARM and Thumb as an ARMv7 CPU (default)
+
+  .. cpp:enumerator:: OPT_ARM_MASK
+
+      When apply :cpp:enumerator:`OPT_ARMv4`,
+      :cpp:enumerator:`OPT_ARMv5T_6` or
+      :cpp:enumerator:`OPT_ARMv7`, this mask must be clear.
+
+  Values for X86 and X86_64 only :
+
+  .. cpp:enumerator:: OPT_ATT_SYNTAX
+
+      Used the AT&T syntax for instruction disassembly
+
+  Values for X86_64 only :
+
+  .. cpp:enumerator:: OPT_ENABLE_FS_GS
+
+      Enable Backup/Restore of FS/GS  segment. This option uses the
+      instructions (RD|WR)(FS|GS)BASE that must be supported by the operating
+      system
 
 .. doxygenenum:: VMError
     :project: QBDI_C
@@ -430,9 +562,14 @@ Log
 .. doxygenenum:: LogPriority
     :project: QBDI_C
 
-.. doxygenfunction:: qbdi_setLogOutput
+.. doxygenfunction:: qbdi_setLogFile
     :project: QBDI_C
 
-.. doxygenfunction:: qbdi_addLogFilter
+.. doxygenfunction:: qbdi_setLogConsole
     :project: QBDI_C
 
+.. doxygenfunction:: qbdi_setLogDefault
+    :project: QBDI_C
+
+.. doxygenfunction:: qbdi_setLogPriority
+    :project: QBDI_C

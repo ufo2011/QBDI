@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,17 +15,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "VMTest.h"
 #include <algorithm>
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <set>
+#include "APITest.h"
 
 #include "inttypes.h"
 
-#include "Memory.hpp"
-#include "Platform.h"
+#include "QBDI/Memory.hpp"
+#include "QBDI/Platform.h"
+#include "QBDI/PtrAuth.h"
+#include "Utility/LogSys.h"
 #include "Utility/String.h"
 
-#define STACK_SIZE 4096
+#if defined(QBDI_ARCH_X86)
+#include "X86/VMTest_X86.h"
+#elif defined(QBDI_ARCH_X86_64)
+#include "X86_64/VMTest_X86_64.h"
+#elif defined(QBDI_ARCH_ARM)
+#include "ARM/VMTest_ARM.h"
+#elif defined(QBDI_ARCH_AARCH64)
+#include "AARCH64/VMTest_AARCH64.h"
+#else
+#error "Architecture not supported"
+#endif
+
 #define FAKE_RET_ADDR 0x666
 
 QBDI_DISABLE_ASAN QBDI_NOINLINE int dummyFun0() { return 42; }
@@ -80,241 +94,76 @@ QBDI_DISABLE_ASAN QBDI_NOINLINE int dummyFunBB(int arg0, int arg1, int arg2,
   return r;
 }
 
-#if defined(QBDI_ARCH_X86) || defined(QBDI_ARCH_X86_64)
-#define MNEM_COUNT 5u
-#define MNEM_VALIDATION 140u
-#elif defined(QBDI_ARCH_ARM)
-#define MNEM_COUNT 1u
-#define MNEM_VALIDATION 25u
-#endif
-#define MNEM_IMM_SHORT_VAL 66
-#define MNEM_IMM_VAL 42424242
-#define MNEM_IMM_SHORT_STRVAL "66"
-#define MNEM_IMM_STRVAL "42424242"
-
-struct TestInst {
-  uint32_t instSize;
-  uint8_t numOperands;
-  bool isCompare;
-  QBDI::RegisterAccessType flagsAccess;
-  QBDI::OperandAnalysis operands[6];
-};
-
-#if defined(QBDI_ARCH_X86) || defined(QBDI_ARCH_X86_64)
-struct TestInst TestInsts[MNEM_COUNT] = {
-    {3,
-     2,
-     true,
-     QBDI::REGISTER_WRITE,
-     {
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_NONE, 0, 1, 8, 3, "DH",
-          QBDI::REGISTER_READ},
-         {QBDI::OPERAND_IMM, QBDI::OPERANDFLAG_NONE, MNEM_IMM_SHORT_VAL, 1, 0,
-          -1, nullptr, QBDI::REGISTER_UNUSED},
-     }},
-#if defined(QBDI_ARCH_X86_64)
-    {3,
-     2,
-     true,
-     QBDI::REGISTER_WRITE,
-     {
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_NONE, 0, 8, 0, 0, "RAX",
-          QBDI::REGISTER_READ},
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_NONE, 0, 8, 0, 1, "RBX",
-          QBDI::REGISTER_READ},
-     }},
-#else
-    {3,
-     2,
-     true,
-     QBDI::REGISTER_WRITE,
-     {
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_NONE, 0, 2, 0, 0, "AX",
-          QBDI::REGISTER_READ},
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_NONE, 0, 2, 0, 1, "BX",
-          QBDI::REGISTER_READ},
-     }},
-#endif
-    {5,
-     2,
-     true,
-     QBDI::REGISTER_WRITE,
-     {
-         {QBDI::OPERAND_IMM, QBDI::OPERANDFLAG_NONE, MNEM_IMM_VAL, 4, 0, -1,
-          nullptr, QBDI::REGISTER_UNUSED},
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_NONE, 0, 4, 0, 0, "EAX",
-          QBDI::REGISTER_READ},
-     }},
-    {1,
-     5,
-     false,
-     QBDI::REGISTER_READ | QBDI::REGISTER_WRITE,
-     {
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_ADDR, 0, sizeof(QBDI::rword), 0,
-          5, QBDI::GPR_NAMES[5], QBDI::REGISTER_READ},
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_ADDR, 0, sizeof(QBDI::rword), 0,
-          4, QBDI::GPR_NAMES[4], QBDI::REGISTER_READ},
-         {QBDI::OPERAND_INVALID, QBDI::OPERANDFLAG_NONE, 0, 0, 0, -1, NULL,
-          QBDI::REGISTER_UNUSED},
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_NONE, 0, 4, 0, 5, "EDI",
-          QBDI::REGISTER_READ_WRITE},
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_NONE, 0, 4, 0, 4, "ESI",
-          QBDI::REGISTER_READ_WRITE},
-     }},
-#if defined(QBDI_ARCH_X86_64)
-    {5,
-     6,
-     true,
-     QBDI::REGISTER_WRITE,
-     {
-#else
-    {4,
-     6,
-     true,
-     QBDI::REGISTER_WRITE,
-     {
-#endif
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_NONE, 0, sizeof(QBDI::rword), 0,
-          0, QBDI::GPR_NAMES[0], QBDI::REGISTER_READ},
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_ADDR, 0, sizeof(QBDI::rword), 0,
-          4, QBDI::GPR_NAMES[4], QBDI::REGISTER_READ},
-         {QBDI::OPERAND_IMM, QBDI::OPERANDFLAG_ADDR, 1, sizeof(QBDI::rword), 0,
-          -1, NULL, QBDI::REGISTER_UNUSED},
-         {QBDI::OPERAND_GPR, QBDI::OPERANDFLAG_ADDR, 0, sizeof(QBDI::rword), 0,
-          5, QBDI::GPR_NAMES[5], QBDI::REGISTER_READ},
-         {QBDI::OPERAND_IMM, QBDI::OPERANDFLAG_ADDR, 3, sizeof(QBDI::rword), 0,
-          -1, NULL, QBDI::REGISTER_UNUSED},
-         {QBDI::OPERAND_INVALID, QBDI::OPERANDFLAG_NONE, 0, 0, 0, -1, NULL,
-          QBDI::REGISTER_UNUSED},
-     }},
-};
-#elif defined(QBDI_ARCH_ARM)
-struct TestInst TestInsts[MNEM_COUNT] = {
-    {4,
-     3,
-     true,
-     {
-         {QBDI::OPERAND_GPR, 0, sizeof(QBDI::rword), 0, 3, "R3",
-          QBDI::REGISTER_READ},
-         {QBDI::OPERAND_IMM, MNEM_IMM_SHORT_VAL, sizeof(QBDI::rword), 0, -1,
-          nullptr, QBDI::REGISTER_UNUSED},
-         {QBDI::OPERAND_PRED, 0, sizeof(QBDI::rword), 0, -1, nullptr,
-          QBDI::REGISTER_UNUSED},
-     }}};
-#endif
-
-QBDI_NOSTACKPROTECTOR QBDI_DISABLE_ASAN QBDI_NOINLINE QBDI::rword
-satanicFun(QBDI::rword arg0) {
-  QBDI::rword volatile res = arg0 + 0x666;
-#if defined(QBDI_ARCH_X86) || defined(QBDI_ARCH_X86_64)
-  QBDI::rword p = 0x42;
-  QBDI::rword v[2] = {0x67, 0x45};
-#ifndef QBDI_PLATFORM_WINDOWS
-  asm("cmp $" MNEM_IMM_SHORT_STRVAL ", %%dh" ::: "dh");
-#if defined(QBDI_ARCH_X86_64)
-  asm("cmp %%rbx, %%rax" ::: "rbx", "rax");
-  asm("cmp $" MNEM_IMM_STRVAL ", %%eax" ::: "eax"); // explicit register
-  asm("movq %0, %%rdi; movq %1, %%rsi; cmpsb %%es:(%%rdi), (%%rsi)" ::"r"(&p),
-      "r"(&p)
-      : "rdi", "rsi");
-  asm("mov %0, %%rdi; mov $1, %%rsi; cmp 0x3(%%rsi,%%rdi,1), %%rax" ::"r"(v)
-      : "rdi", "rsi", "rax");
-#else
-  asm("cmp %%bx, %%ax" ::: "bx", "ax");
-  asm("cmp $" MNEM_IMM_STRVAL ", %%eax" ::: "eax"); // explicit register
-  asm("mov %0, %%edi; mov %1, %%esi; cmpsb %%es:(%%edi), (%%esi)" ::"r"(&p),
-      "r"(&p)
-      : "edi", "esi");
-  asm("mov %0, %%edi; mov $1, %%esi; cmp 0x3(%%esi,%%edi,1), %%eax" ::"r"(v)
-      : "edi", "esi", "eax");
-#endif
-#endif
-#elif defined(QBDI_ARCH_ARM)
-  asm("cmp r3, #" MNEM_IMM_SHORT_STRVAL);
-#endif
-  return res;
-}
-
-VMTest::VMTest() {
-  // Constructing a new QBDI vm
-  vm = std::make_unique<QBDI::VM>();
-  REQUIRE(vm.get() != nullptr);
-
-  bool instrumented =
-      vm->addInstrumentedModuleFromAddr((QBDI::rword)&dummyFun0);
-  REQUIRE(instrumented);
-
-  // get GPR state
-  state = vm->getGPRState();
-
-  // Get a pointer to the GPR state of the vm
-  // Setup initial GPR state, this fakestack will produce a ret NULL at the end
-  // of the execution
-  bool ret = QBDI::allocateVirtualStack(state, STACK_SIZE, &fakestack);
-  REQUIRE(ret == true);
-}
-
-VMTest::~VMTest() {
-  QBDI::alignedFree(fakestack);
-  vm.reset();
-}
-
-TEST_CASE_METHOD(VMTest, "VMTest-Call0") {
+TEST_CASE_METHOD(APITest, "VMTest-Call0") {
   QBDI::simulateCall(state, FAKE_RET_ADDR);
 
-  vm->run((QBDI::rword)dummyFun0, (QBDI::rword)FAKE_RET_ADDR);
+  vm.run((QBDI::rword)dummyFun0, (QBDI::rword)FAKE_RET_ADDR);
   QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)42);
 
   SUCCEED();
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-Call1") {
+TEST_CASE_METHOD(APITest, "VMTest-Call1") {
   QBDI::simulateCall(state, FAKE_RET_ADDR, {42});
 
-  vm->run((QBDI::rword)dummyFun1, (QBDI::rword)FAKE_RET_ADDR);
+  vm.run((QBDI::rword)dummyFun1, (QBDI::rword)FAKE_RET_ADDR);
   QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)dummyFun1(42));
 
   SUCCEED();
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-Call4") {
+TEST_CASE_METHOD(APITest, "VMTest-Call4") {
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 5});
 
-  vm->run((QBDI::rword)dummyFun4, (QBDI::rword)FAKE_RET_ADDR);
+  vm.run((QBDI::rword)dummyFun4, (QBDI::rword)FAKE_RET_ADDR);
   QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)dummyFun4(1, 2, 3, 5));
 
   SUCCEED();
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-Call5") {
+TEST_CASE_METHOD(APITest, "VMTest-Call5") {
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 5, 8});
 
-  vm->run((QBDI::rword)dummyFun5, (QBDI::rword)FAKE_RET_ADDR);
+  vm.run((QBDI::rword)dummyFun5, (QBDI::rword)FAKE_RET_ADDR);
   QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)dummyFun5(1, 2, 3, 5, 8));
 
   SUCCEED();
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-Call8") {
+TEST_CASE_METHOD(APITest, "VMTest-Call8") {
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 5, 8, 13, 21, 34});
 
-  vm->run((QBDI::rword)dummyFun8, (QBDI::rword)FAKE_RET_ADDR);
+  vm.run((QBDI::rword)dummyFun8, (QBDI::rword)FAKE_RET_ADDR);
   QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)dummyFun8(1, 2, 3, 5, 8, 13, 21, 34));
 
   SUCCEED();
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-ExternalCall") {
+TEST_CASE_METHOD(APITest, "VMTest-ExternalCall") {
+
+  dummyFunCall(42);
+
   QBDI::simulateCall(state, FAKE_RET_ADDR, {42});
 
-  vm->run((QBDI::rword)dummyFunCall, (QBDI::rword)FAKE_RET_ADDR);
+  vm.run((QBDI::rword)dummyFunCall, (QBDI::rword)FAKE_RET_ADDR);
   QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)dummyFun1(42));
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-SwitchStackAndCall8") {
+  QBDI_GPR_SET(state, QBDI::REG_SP, 0);
+
+  QBDI::rword ret;
+  vm.switchStackAndCall(&ret, (QBDI::rword)dummyFun8,
+                        {1, 2, 3, 5, 8, 13, 21, 34});
+  REQUIRE(ret == (QBDI::rword)dummyFun8(1, 2, 3, 5, 8, 13, 21, 34));
 
   SUCCEED();
 }
@@ -348,39 +197,36 @@ QBDI::VMAction evilCbk(QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
 }
 
 /* This test is used to ensure that addCodeAddrCB is not broken */
-TEST_CASE_METHOD(VMTest, "VMTest-Breakpoint") {
+TEST_CASE_METHOD(APITest, "VMTest-Breakpoint") {
   uint32_t counter = 0;
   QBDI::rword retval = 0;
-  vm->addCodeAddrCB((QBDI::rword)dummyFun0, QBDI::InstPosition::PREINST,
-                    countInstruction, &counter);
-  vm->call(&retval, (QBDI::rword)dummyFun0);
+  vm.addCodeAddrCB((QBDI::rword)dummyFun0, QBDI::InstPosition::PREINST,
+                   countInstruction, &counter);
+  vm.call(&retval, (QBDI::rword)dummyFun0);
   REQUIRE(retval == (QBDI::rword)42);
   REQUIRE(counter == 1u);
 
   SUCCEED();
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-InstCallback") {
+TEST_CASE_METHOD(APITest, "VMTest-InstCallback") {
   QBDI::rword info[2] = {42, 0};
   QBDI::simulateCall(state, FAKE_RET_ADDR, {info[0]});
 
-  uint32_t instrId =
-      vm->addCodeCB(QBDI::InstPosition::POSTINST, evilCbk, &info);
+  uint32_t instrId = vm.addCodeCB(QBDI::InstPosition::POSTINST, evilCbk, &info);
 
-  bool ran = vm->run((QBDI::rword)satanicFun, (QBDI::rword)FAKE_RET_ADDR);
+  bool ran = vm.run((QBDI::rword)satanicFun, (QBDI::rword)FAKE_RET_ADDR);
   REQUIRE(ran);
 
   QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)satanicFun(info[0]));
   REQUIRE(info[1] == (QBDI::rword)1);
 
-  bool success = vm->deleteInstrumentation(instrId);
+  bool success = vm.deleteInstrumentation(instrId);
   REQUIRE(success);
 
   SUCCEED();
 }
-
-#define MNEM_CMP "CMP*"
 
 QBDI::VMAction evilMnemCbk(QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
                            QBDI::FPRState *fprState, void *data) {
@@ -400,7 +246,7 @@ QBDI::VMAction evilMnemCbk(QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
     CHECKED_IF(ana->address < (((QBDI::rword)&satanicFun) + 0x100))
     info[1]++;
     // validate inst size
-    struct TestInst &currentInst = TestInsts[info[0] - 1];
+    const struct TestInst &currentInst = TestInsts[info[0] - 1];
 #if defined(QBDI_ARCH_X86) || defined(QBDI_ARCH_X86_64)
     CHECKED_IF(ana->instSize == currentInst.instSize) {
 #else
@@ -423,8 +269,9 @@ QBDI::VMAction evilMnemCbk(QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
     // validate operands
     CHECKED_IF(ana->operands != nullptr) {
       info[1]++;
-      for (uint8_t idx = 0;
+      for (unsigned idx = 0;
            idx < std::min(ana->numOperands, currentInst.numOperands); idx++) {
+        INFO("For operand " << idx);
         const QBDI::OperandAnalysis &cmpOp = currentInst.operands[idx];
         const QBDI::OperandAnalysis &op = ana->operands[idx];
         CHECKED_IF(op.type == cmpOp.type) { info[1]++; }
@@ -449,15 +296,23 @@ QBDI::VMAction evilMnemCbk(QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
   return QBDI::VMAction::CONTINUE;
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-MnemCallback") {
+TEST_CASE_METHOD(APITest, "VMTest-MnemCallback") {
+#ifdef QBDI_ARCH_ARM
+  bool isThumb = ((((QBDI::rword)satanicFun) & 1) == 1);
+  // not compatible with Thumb
+  if (isThumb) {
+    return;
+  }
+#endif
+
   QBDI::rword info[3] = {0, 0, 42};
   QBDI::rword retval = 0;
   const char *noop = MNEM_CMP;
 
   uint32_t instrId =
-      vm->addMnemonicCB(noop, QBDI::InstPosition::PREINST, evilMnemCbk, &info);
+      vm.addMnemonicCB(noop, QBDI::InstPosition::PREINST, evilMnemCbk, &info);
 
-  bool ran = vm->call(&retval, (QBDI::rword)satanicFun, {info[2]});
+  bool ran = vm.call(&retval, (QBDI::rword)satanicFun, {info[2]});
   REQUIRE(ran);
 
   CHECK(retval == (QBDI::rword)satanicFun(info[2]));
@@ -469,7 +324,7 @@ TEST_CASE_METHOD(VMTest, "VMTest-MnemCallback") {
   CHECK(info[1] == (QBDI::rword)MNEM_VALIDATION);
 #endif
 
-  bool success = vm->deleteInstrumentation(instrId);
+  bool success = vm.deleteInstrumentation(instrId);
   REQUIRE(success);
 
   SUCCEED();
@@ -481,40 +336,42 @@ QBDI::VMAction checkTransfer(QBDI::VMInstanceRef vm, const QBDI::VMState *state,
   int *s = (int *)data;
   if (state->event == QBDI::VMEvent::EXEC_TRANSFER_CALL) {
     REQUIRE((*s % 2) == 0);
-    REQUIRE(reinterpret_cast<QBDI::rword>(dummyFun1) == state->sequenceStart);
+    REQUIRE(QBDI::strip_ptrauth(reinterpret_cast<QBDI::rword>(dummyFun1)) ==
+            state->sequenceStart);
     *s += 1;
   } else if (state->event == QBDI::VMEvent::EXEC_TRANSFER_RETURN) {
     REQUIRE((*s % 2) == 1);
-    REQUIRE(reinterpret_cast<QBDI::rword>(dummyFun1) == state->sequenceStart);
+    REQUIRE(QBDI::strip_ptrauth(reinterpret_cast<QBDI::rword>(dummyFun1)) ==
+            state->sequenceStart);
     *s += 1;
   }
   return QBDI::VMAction::CONTINUE;
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-VMEvent_ExecTransfer") {
+TEST_CASE_METHOD(APITest, "VMTest-VMEvent_ExecTransfer") {
   int s = 0;
 
-  bool instrumented = vm->addInstrumentedModuleFromAddr(
+  bool instrumented = vm.addInstrumentedModuleFromAddr(
       reinterpret_cast<QBDI::rword>(dummyFunBB));
   REQUIRE(instrumented);
-  vm->removeInstrumentedRange(reinterpret_cast<QBDI::rword>(dummyFun1),
-                              reinterpret_cast<QBDI::rword>(dummyFun1) + 1);
+  vm.removeInstrumentedRange(reinterpret_cast<QBDI::rword>(dummyFun1),
+                             reinterpret_cast<QBDI::rword>(dummyFun1) + 1);
 
-  uint32_t id = vm->addVMEventCB(QBDI::VMEvent::EXEC_TRANSFER_CALL,
-                                 checkTransfer, (void *)&s);
+  uint32_t id = vm.addVMEventCB(QBDI::VMEvent::EXEC_TRANSFER_CALL,
+                                checkTransfer, (void *)&s);
   REQUIRE(id != QBDI::INVALID_EVENTID);
-  id = vm->addVMEventCB(QBDI::VMEvent::EXEC_TRANSFER_RETURN, checkTransfer,
-                        (void *)&s);
+  id = vm.addVMEventCB(QBDI::VMEvent::EXEC_TRANSFER_RETURN, checkTransfer,
+                       (void *)&s);
   REQUIRE(id != QBDI::INVALID_EVENTID);
   QBDI::rword retval;
-  bool ran = vm->call(&retval, reinterpret_cast<QBDI::rword>(dummyFunBB),
-                      {0, 0, 0, reinterpret_cast<QBDI::rword>(dummyFun1),
-                       reinterpret_cast<QBDI::rword>(dummyFun1),
-                       reinterpret_cast<QBDI::rword>(dummyFun1)});
+  bool ran = vm.call(&retval, reinterpret_cast<QBDI::rword>(dummyFunBB),
+                     {0, 0, 0, reinterpret_cast<QBDI::rword>(dummyFun1),
+                      reinterpret_cast<QBDI::rword>(dummyFun1),
+                      reinterpret_cast<QBDI::rword>(dummyFun1)});
   REQUIRE(ran);
   REQUIRE(retval == (QBDI::rword)0);
   REQUIRE(10 == s);
-  vm->deleteAllInstrumentations();
+  vm.deleteAllInstrumentations();
 }
 
 struct CheckBasicBlockData {
@@ -549,74 +406,75 @@ static QBDI::VMAction checkBasicBlock(QBDI::VMInstanceRef vm,
   return QBDI::VMAction::CONTINUE;
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-VMEvent_BasicBlock") {
+TEST_CASE_METHOD(APITest, "VMTest-VMEvent_BasicBlock") {
   CheckBasicBlockData data{false, 0, 0, 0};
-  vm->addVMEventCB(QBDI::BASIC_BLOCK_ENTRY | QBDI::BASIC_BLOCK_EXIT,
-                   checkBasicBlock, &data);
+  vm.addVMEventCB(QBDI::BASIC_BLOCK_ENTRY | QBDI::BASIC_BLOCK_EXIT,
+                  checkBasicBlock, &data);
 
   // backup GPRState to have the same state before each run
-  QBDI::GPRState backup = *(vm->getGPRState());
+  QBDI::GPRState backup = *(vm.getGPRState());
 
   for (QBDI::rword j = 0; j < 4; j++) {
     for (QBDI::rword i = 0; i < 8; i++) {
-      vm->setGPRState(&backup);
+      QBDI_DEBUG("Begin Loop iteration {} {}", j, i);
+      vm.setGPRState(&backup);
 
       data.waitingEnd = false;
       data.count = 0;
       QBDI::rword retval;
       bool ran =
-          vm->call(&retval, reinterpret_cast<QBDI::rword>(dummyFunBB),
-                   {i ^ j, 5, 13, reinterpret_cast<QBDI::rword>(dummyFun1),
-                    reinterpret_cast<QBDI::rword>(dummyFun1),
-                    reinterpret_cast<QBDI::rword>(dummyFun1)});
+          vm.call(&retval, reinterpret_cast<QBDI::rword>(dummyFunBB),
+                  {i ^ j, 5, 13, reinterpret_cast<QBDI::rword>(dummyFun1),
+                   reinterpret_cast<QBDI::rword>(dummyFun1),
+                   reinterpret_cast<QBDI::rword>(dummyFun1)});
       CHECK(ran);
       CHECK_FALSE(data.waitingEnd);
       CHECK(data.count != 0);
     }
-    vm->clearAllCache();
+    vm.clearAllCache();
   }
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-CacheInvalidation") {
+TEST_CASE_METHOD(APITest, "VMTest-CacheInvalidation") {
   uint32_t count1 = 0;
   uint32_t count2 = 0;
 
   bool instrumented =
-      vm->addInstrumentedModuleFromAddr((QBDI::rword)&dummyFunCall);
+      vm.addInstrumentedModuleFromAddr((QBDI::rword)&dummyFunCall);
   REQUIRE(instrumented);
   uint32_t instr1 =
-      vm->addCodeCB(QBDI::InstPosition::POSTINST, countInstruction, &count1);
+      vm.addCodeCB(QBDI::InstPosition::POSTINST, countInstruction, &count1);
 
   count1 = 0;
   count2 = 0;
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 4});
-  bool ran = vm->run((QBDI::rword)dummyFun4, (QBDI::rword)FAKE_RET_ADDR);
+  bool ran = vm.run((QBDI::rword)dummyFun4, (QBDI::rword)FAKE_RET_ADDR);
   REQUIRE(ran);
   QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)10);
   REQUIRE((uint32_t)0 != count1);
   REQUIRE((uint32_t)0 == count2);
 
-  uint32_t instr2 = vm->addCodeRangeCB(
+  uint32_t instr2 = vm.addCodeRangeCB(
       (QBDI::rword)&dummyFun5, ((QBDI::rword)&dummyFun5) + 64,
       QBDI::InstPosition::POSTINST, countInstruction, &count2);
 
   count1 = 0;
   count2 = 0;
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 4, 5});
-  ran = vm->run((QBDI::rword)dummyFun5, (QBDI::rword)FAKE_RET_ADDR);
+  ran = vm.run((QBDI::rword)dummyFun5, (QBDI::rword)FAKE_RET_ADDR);
   REQUIRE(ran);
   ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)15);
   REQUIRE((uint32_t)0 != count1);
   REQUIRE((uint32_t)0 != count2);
 
-  vm->deleteInstrumentation(instr1);
+  vm.deleteInstrumentation(instr1);
 
   count1 = 0;
   count2 = 0;
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 4});
-  ran = vm->run((QBDI::rword)dummyFun4, (QBDI::rword)FAKE_RET_ADDR);
+  ran = vm.run((QBDI::rword)dummyFun4, (QBDI::rword)FAKE_RET_ADDR);
   REQUIRE(ran);
   ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)10);
@@ -626,7 +484,7 @@ TEST_CASE_METHOD(VMTest, "VMTest-CacheInvalidation") {
   count1 = 0;
   count2 = 0;
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 4, 5});
-  ran = vm->run((QBDI::rword)dummyFun5, (QBDI::rword)FAKE_RET_ADDR);
+  ran = vm.run((QBDI::rword)dummyFun5, (QBDI::rword)FAKE_RET_ADDR);
   REQUIRE(ran);
   ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)15);
@@ -634,24 +492,24 @@ TEST_CASE_METHOD(VMTest, "VMTest-CacheInvalidation") {
   REQUIRE((uint32_t)0 != count2);
 
   instr1 =
-      vm->addCodeCB(QBDI::InstPosition::POSTINST, countInstruction, &count1);
+      vm.addCodeCB(QBDI::InstPosition::POSTINST, countInstruction, &count1);
 
   count1 = 0;
   count2 = 0;
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 4, 5});
-  ran = vm->run((QBDI::rword)dummyFun5, (QBDI::rword)FAKE_RET_ADDR);
+  ran = vm.run((QBDI::rword)dummyFun5, (QBDI::rword)FAKE_RET_ADDR);
   REQUIRE(ran);
   ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)15);
   REQUIRE((uint32_t)0 != count1);
   REQUIRE((uint32_t)0 != count2);
 
-  vm->deleteInstrumentation(instr2);
+  vm.deleteInstrumentation(instr2);
 
   count1 = 0;
   count2 = 0;
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 4});
-  ran = vm->run((QBDI::rword)dummyFun4, (QBDI::rword)FAKE_RET_ADDR);
+  ran = vm.run((QBDI::rword)dummyFun4, (QBDI::rword)FAKE_RET_ADDR);
   REQUIRE(ran);
   ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)10);
@@ -661,7 +519,7 @@ TEST_CASE_METHOD(VMTest, "VMTest-CacheInvalidation") {
   count1 = 0;
   count2 = 0;
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 4, 5});
-  ran = vm->run((QBDI::rword)dummyFun5, (QBDI::rword)FAKE_RET_ADDR);
+  ran = vm.run((QBDI::rword)dummyFun5, (QBDI::rword)FAKE_RET_ADDR);
   REQUIRE(ran);
   ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)15);
@@ -713,24 +571,348 @@ QBDI::VMAction funkyCountInstruction(QBDI::VMInstanceRef vm,
   return QBDI::VMAction::BREAK_TO_VM;
 }
 
-TEST_CASE_METHOD(VMTest, "VMTest-DelayedCacheFlush") {
+TEST_CASE_METHOD(APITest, "VMTest-DelayedCacheFlush") {
   uint32_t count = 0;
   FunkyInfo info = FunkyInfo{0, 0};
 
   bool instrumented =
-      vm->addInstrumentedModuleFromAddr((QBDI::rword)&dummyFunCall);
+      vm.addInstrumentedModuleFromAddr((QBDI::rword)&dummyFunCall);
   REQUIRE(instrumented);
-  vm->addCodeCB(QBDI::InstPosition::POSTINST, countInstruction, &count);
-  info.instID = vm->addCodeRangeCB(
+  vm.addCodeCB(QBDI::InstPosition::POSTINST, countInstruction, &count);
+  info.instID = vm.addCodeRangeCB(
       (QBDI::rword)dummyFun4, ((QBDI::rword)dummyFun4) + 10,
       QBDI::InstPosition::POSTINST, funkyCountInstruction, &info);
 
   QBDI::simulateCall(state, FAKE_RET_ADDR, {1, 2, 3, 4});
-  bool ran = vm->run((QBDI::rword)dummyFun4, (QBDI::rword)FAKE_RET_ADDR);
+  bool ran = vm.run((QBDI::rword)dummyFun4, (QBDI::rword)FAKE_RET_ADDR);
   REQUIRE(ran);
   QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
   REQUIRE(ret == (QBDI::rword)10);
   REQUIRE(count == info.count);
+}
+
+struct PriorityDataCall {
+  QBDI::rword addr;
+  QBDI::InstPosition pos;
+  int priority;
+
+  PriorityDataCall(QBDI::rword addr, QBDI::InstPosition pos, int priority)
+      : addr(addr), pos(pos), priority(priority) {}
+};
+
+static std::vector<QBDI::InstrRuleDataCBK>
+priorityInstrCB(QBDI::VMInstanceRef vm, const QBDI::InstAnalysis *inst,
+                void *data_) {
+  std::vector<QBDI::InstrRuleDataCBK> r;
+
+  r.emplace_back(
+      QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::PREINST, -100);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      data_, -100);
+
+  r.emplace_back(
+      QBDI::InstPosition::POSTINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::POSTINST, 0);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      data_, 0);
+
+  r.emplace_back(
+      QBDI::InstPosition::POSTINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::POSTINST, 100);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      data_, 100);
+
+  r.emplace_back(
+      QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::PREINST, 100);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      data_, 100);
+
+  r.emplace_back(
+      QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::PREINST, 0);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      data_, 0);
+
+  r.emplace_back(
+      QBDI::InstPosition::POSTINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::POSTINST, -100);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      data_, -100);
+
+  return r;
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-Priority") {
+  std::vector<PriorityDataCall> callList;
+  QBDI::rword retval = 0;
+
+  vm.addCodeCB(
+      QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::PREINST, -10);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      &callList, -10);
+
+  vm.addCodeCB(
+      QBDI::InstPosition::POSTINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::POSTINST, -67);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      &callList, -67);
+
+  vm.addCodeCB(
+      QBDI::InstPosition::POSTINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::POSTINST, 56);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      &callList, 56);
+
+  vm.addInstrRule(priorityInstrCB, QBDI::ANALYSIS_INSTRUCTION, &callList);
+
+  vm.addCodeCB(
+      QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::PREINST, 27);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      &callList, 27);
+
+  vm.addCodeCB(
+      QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((std::vector<PriorityDataCall> *)data)
+            ->emplace_back(
+                vm->getInstAnalysis(QBDI::ANALYSIS_INSTRUCTION)->address,
+                QBDI::InstPosition::PREINST, -77);
+
+        return QBDI::VMAction::CONTINUE;
+      },
+      &callList, -77);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+
+  REQUIRE(callList.size() >= 11);
+
+  for (size_t i = 1; i < callList.size(); i++) {
+    if (callList[i - 1].addr == callList[i].addr) {
+      if (callList[i - 1].pos == callList[i].pos) {
+        REQUIRE(callList[i - 1].priority >= callList[i].priority);
+      } else {
+        REQUIRE(callList[i - 1].pos == QBDI::InstPosition::PREINST);
+        REQUIRE(callList[i].pos == QBDI::InstPosition::POSTINST);
+      }
+    }
+  }
+
+  SUCCEED();
+}
+
+struct SkipTestData {
+  uint8_t cbpre1;
+  uint8_t cbpre2;
+  uint8_t cbpre3;
+  uint8_t cbpost;
+  uint8_t cbnumpre;
+  uint8_t cbnumpost;
+};
+
+TEST_CASE_METHOD(APITest, "VMTest-SKIP_INST") {
+
+  SkipTestData data = {0};
+
+  QBDI::rword addr = genASM(SKIPTESTASM);
+
+  vm.addCodeAddrCB(
+      addr, QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbpre1++;
+        return QBDI::VMAction::CONTINUE;
+      },
+      &data, 100);
+  vm.addCodeCB(
+      QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbnumpre++;
+        return QBDI::VMAction::CONTINUE;
+      },
+      &data, 0);
+  vm.addCodeAddrCB(
+      addr, QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbpre2++;
+        return QBDI::VMAction::SKIP_INST;
+      },
+      &data, -100);
+  vm.addCodeAddrCB(
+      addr, QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbpre3++;
+        return QBDI::VMAction::CONTINUE;
+      },
+      &data, -200);
+  vm.addCodeAddrCB(
+      addr, QBDI::InstPosition::POSTINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbpost++;
+        return QBDI::VMAction::CONTINUE;
+      },
+      &data, 0);
+  vm.addCodeCB(
+      QBDI::InstPosition::POSTINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbnumpost++;
+        return QBDI::VMAction::CONTINUE;
+      },
+      &data, 0);
+
+  QBDI::rword retval = 0;
+  vm.call(&retval, (QBDI::rword)addr);
+  REQUIRE(data.cbpre1 == 1);
+  REQUIRE(data.cbpre2 == 1);
+  REQUIRE(data.cbpre3 == 0);
+  REQUIRE(data.cbpost == 1);
+  REQUIRE(data.cbnumpre == 3);
+  REQUIRE(data.cbnumpost == 3);
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-SKIP_PATCH") {
+
+  SkipTestData data = {0};
+
+  QBDI::rword addr = genASM(SKIPTESTASM);
+
+  vm.addCodeAddrCB(
+      addr, QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbpre1++;
+        return QBDI::VMAction::CONTINUE;
+      },
+      &data, 100);
+  vm.addCodeCB(
+      QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbnumpre++;
+        return QBDI::VMAction::CONTINUE;
+      },
+      &data, 0);
+  vm.addCodeAddrCB(
+      addr, QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbpre2++;
+        return QBDI::VMAction::SKIP_PATCH;
+      },
+      &data, -100);
+  vm.addCodeAddrCB(
+      addr, QBDI::InstPosition::PREINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbpre3++;
+        return QBDI::VMAction::CONTINUE;
+      },
+      &data, -200);
+  vm.addCodeAddrCB(
+      addr, QBDI::InstPosition::POSTINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbpost++;
+        return QBDI::VMAction::CONTINUE;
+      },
+      &data, 0);
+  vm.addCodeCB(
+      QBDI::InstPosition::POSTINST,
+      [](QBDI::VMInstanceRef vm, QBDI::GPRState *gprState,
+         QBDI::FPRState *fprState, void *data) -> QBDI::VMAction {
+        ((SkipTestData *)data)->cbnumpost++;
+        return QBDI::VMAction::CONTINUE;
+      },
+      &data, 0);
+
+  QBDI::rword retval = 0;
+  vm.call(&retval, (QBDI::rword)addr);
+  REQUIRE(data.cbpre1 == 1);
+  REQUIRE(data.cbpre2 == 1);
+  REQUIRE(data.cbpre3 == 0);
+  REQUIRE(data.cbpost == 0);
+  REQUIRE(data.cbnumpre == 3);
+  REQUIRE(data.cbnumpost == 2);
 }
 
 // Test copy/move constructor/assignment operator
@@ -789,8 +971,9 @@ static QBDI::VMAction verifyCB2(QBDI::VMInstanceRef vm, QBDI::GPRState *,
 
 TEST_CASE("VMTest-MoveConstructor") {
 
-  VMTest vm1;
-  QBDI::VM *vm = vm1.vm.get();
+  APITest vm1_;
+  std::unique_ptr<QBDI::VM> vm1 = std::make_unique<QBDI::VM>(vm1_.vm);
+  QBDI::VM *vm = vm1.get();
 
   MoveCallbackStruct data{vm, true, false, false, false, false};
 
@@ -806,6 +989,7 @@ TEST_CASE("VMTest-MoveConstructor") {
 
   QBDI::rword retvalue;
 
+  QBDI_DEBUG("Execute dummyFun1 with the original VM");
   vm->call(&retvalue, (QBDI::rword)dummyFun1, {350});
   REQUIRE(retvalue == 350);
   REQUIRE(data.reachEventCB);
@@ -820,15 +1004,17 @@ TEST_CASE("VMTest-MoveConstructor") {
   REQUIRE(vm == data.expectedRef);
 
   // move vm
+  QBDI_DEBUG("Move the VM");
   QBDI::VM movedVM(std::move(*vm));
   vm = nullptr;
 
-  vm1.vm.reset();
-  REQUIRE(vm1.vm.get() == nullptr);
+  vm1.reset();
+  REQUIRE(vm1.get() == nullptr);
 
   REQUIRE(data.expectedRef != &movedVM);
   data.expectedRef = &movedVM;
 
+  QBDI_DEBUG("Execute with the moved VM");
   movedVM.call(&retvalue, (QBDI::rword)dummyFun1, {780});
 
   REQUIRE(retvalue == 780);
@@ -843,8 +1029,8 @@ TEST_CASE("VMTest-MoveConstructor") {
 
 TEST_CASE("VMTest-CopyConstructor") {
 
-  VMTest vm1;
-  QBDI::VM *vm = vm1.vm.get();
+  APITest vm1;
+  QBDI::VM *vm = &vm1.vm;
 
   MoveCallbackStruct data{vm, true, false, false, false, false};
 
@@ -860,6 +1046,7 @@ TEST_CASE("VMTest-CopyConstructor") {
 
   QBDI::rword retvalue;
 
+  QBDI_DEBUG("Execute dummyFun1 with the original VM");
   vm->call(&retvalue, (QBDI::rword)dummyFun1, {350});
   REQUIRE(retvalue == 350);
   REQUIRE(data.reachEventCB);
@@ -872,10 +1059,12 @@ TEST_CASE("VMTest-CopyConstructor") {
   data.allowedNewBlock = false;
 
   // copy vm
+  QBDI_DEBUG("Copy the VM");
   QBDI::VM movedVM(*vm);
 
   REQUIRE(data.expectedRef != &movedVM);
 
+  QBDI_DEBUG("Execute second time with the original VM");
   vm->call(&retvalue, (QBDI::rword)dummyFun1, {620});
   REQUIRE(retvalue == 620);
   REQUIRE(data.reachEventCB);
@@ -888,6 +1077,7 @@ TEST_CASE("VMTest-CopyConstructor") {
   data.allowedNewBlock = true;
   data.expectedRef = &movedVM;
 
+  QBDI_DEBUG("Execute with the copied VM");
   movedVM.call(&retvalue, (QBDI::rword)dummyFun1, {780});
   REQUIRE(retvalue == 780);
   REQUIRE(data.reachEventCB);
@@ -897,10 +1087,12 @@ TEST_CASE("VMTest-CopyConstructor") {
 
 TEST_CASE("VMTest-MoveAssignmentOperator") {
 
-  VMTest vm1_;
-  VMTest vm2_;
-  QBDI::VM *vm1 = vm1_.vm.get();
-  QBDI::VM *vm2 = vm2_.vm.get();
+  APITest vm1__;
+  APITest vm2__;
+  std::unique_ptr<QBDI::VM> vm1_ = std::make_unique<QBDI::VM>(vm1__.vm);
+  std::unique_ptr<QBDI::VM> vm2_ = std::make_unique<QBDI::VM>(vm2__.vm);
+  QBDI::VM *vm1 = vm1_.get();
+  QBDI::VM *vm2 = vm2_.get();
   REQUIRE(vm1 != vm2);
 
   MoveCallbackStruct data1{vm1, true, false, false, false, false};
@@ -955,8 +1147,8 @@ TEST_CASE("VMTest-MoveAssignmentOperator") {
   *vm2 = std::move(*vm1);
   vm1 = nullptr;
 
-  vm1_.vm.reset();
-  REQUIRE(vm1_.vm.get() == nullptr);
+  vm1_.reset();
+  REQUIRE(vm1_.get() == nullptr);
 
   vm2->call(&retvalue, (QBDI::rword)dummyFun1, {780});
 
@@ -975,10 +1167,10 @@ TEST_CASE("VMTest-MoveAssignmentOperator") {
 
 TEST_CASE("VMTest-CopyAssignmentOperator") {
 
-  VMTest vm1_;
-  VMTest vm2_;
-  QBDI::VM *vm1 = vm1_.vm.get();
-  QBDI::VM *vm2 = vm2_.vm.get();
+  APITest vm1_;
+  APITest vm2_;
+  QBDI::VM *vm1 = &vm1_.vm;
+  QBDI::VM *vm2 = &vm2_.vm;
   REQUIRE(vm1 != vm2);
 
   MoveCallbackStruct data1{vm1, true, false, false, false, false};
@@ -1063,4 +1255,716 @@ TEST_CASE("VMTest-CopyAssignmentOperator") {
   REQUIRE_FALSE(data2.reachInstCB);
   REQUIRE_FALSE(data2.reachCB2);
   REQUIRE_FALSE(data2.reachInstrumentCB);
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-VMEventLambda-VMcpy") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+  QBDI::VMCbLambda cbk = [&cbCalled](QBDI::VMInstanceRef, const QBDI::VMState *,
+                                     QBDI::GPRState *, QBDI::FPRState *) {
+    cbCalled = true;
+    return QBDI::VMAction::CONTINUE;
+  };
+
+  vm.addVMEventCB(
+      QBDI::SEQUENCE_ENTRY | QBDI::SEQUENCE_EXIT | QBDI::BASIC_BLOCK_NEW, cbk);
+
+  // copy constructor
+  QBDI::VM vm2 = vm;
+
+  // copy operator
+  QBDI::VM vm3;
+  vm3.precacheBasicBlock((QBDI::rword)dummyFun0);
+  vm3 = vm;
+
+  vm.deleteAllInstrumentations();
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm2.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm3.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InstrRuleCbLambda-VMCpy") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+
+  vm.addInstrRule(
+      [&cbCalled](QBDI::VMInstanceRef, const QBDI::InstAnalysis *)
+          -> std::vector<QBDI::InstrRuleDataCBK> {
+        cbCalled = true;
+        return {};
+      },
+      QBDI::ANALYSIS_INSTRUCTION);
+
+  // copy constructor
+  QBDI::VM vm2 = vm;
+
+  // copy operator
+  QBDI::VM vm3;
+  vm3.precacheBasicBlock((QBDI::rword)dummyFun0);
+  vm3 = vm;
+
+  vm.deleteAllInstrumentations();
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm2.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm3.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InstCbLambda-VMCpy") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+
+  vm.addCodeCB(
+      QBDI::InstPosition::PREINST,
+      [&cbCalled](QBDI::VMInstanceRef, QBDI::GPRState *, QBDI::FPRState *) {
+        cbCalled = true;
+        return QBDI::VMAction::CONTINUE;
+      });
+
+  // copy constructor
+  QBDI::VM vm2 = vm;
+
+  // copy operator
+  QBDI::VM vm3;
+  vm3.precacheBasicBlock((QBDI::rword)dummyFun0);
+  vm3 = vm;
+
+  vm.deleteAllInstrumentations();
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm2.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm3.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-VMEventLambda") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+  QBDI::VMCbLambda cbk = [&cbCalled](QBDI::VMInstanceRef, const QBDI::VMState *,
+                                     QBDI::GPRState *, QBDI::FPRState *) {
+    cbCalled = true;
+    return QBDI::VMAction::CONTINUE;
+  };
+
+  vm.addVMEventCB(
+      QBDI::SEQUENCE_ENTRY | QBDI::SEQUENCE_EXIT | QBDI::BASIC_BLOCK_NEW, cbk);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm.deleteAllInstrumentations();
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm.addVMEventCB(QBDI::SEQUENCE_ENTRY | QBDI::SEQUENCE_EXIT |
+                      QBDI::BASIC_BLOCK_NEW,
+                  std::move(cbk));
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InstrRuleCbLambda-addInstrRule") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+  QBDI::InstrRuleCbLambda cbk =
+      [&cbCalled](
+          QBDI::VMInstanceRef,
+          const QBDI::InstAnalysis *) -> std::vector<QBDI::InstrRuleDataCBK> {
+    cbCalled = true;
+    return {};
+  };
+
+  vm.addInstrRule(cbk, QBDI::ANALYSIS_INSTRUCTION);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm.deleteAllInstrumentations();
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm.addInstrRule(std::move(cbk), QBDI::ANALYSIS_INSTRUCTION);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InstrRuleCbLambda-addInstrRuleRange") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+  QBDI::InstrRuleCbLambda cbk =
+      [&cbCalled](
+          QBDI::VMInstanceRef,
+          const QBDI::InstAnalysis *) -> std::vector<QBDI::InstrRuleDataCBK> {
+    cbCalled = true;
+    return {};
+  };
+
+  vm.addInstrRuleRange((QBDI::rword)dummyFun0, (QBDI::rword)dummyFun0 + 0x100,
+                       cbk, QBDI::ANALYSIS_INSTRUCTION);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm.deleteAllInstrumentations();
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm.addInstrRuleRange((QBDI::rword)dummyFun0, (QBDI::rword)dummyFun0 + 0x100,
+                       std::move(cbk), QBDI::ANALYSIS_INSTRUCTION);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InstrRuleCbLambda-addInstrRuleRangeSet") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+  QBDI::InstrRuleCbLambda cbk =
+      [&cbCalled](
+          QBDI::VMInstanceRef,
+          const QBDI::InstAnalysis *) -> std::vector<QBDI::InstrRuleDataCBK> {
+    cbCalled = true;
+    return {};
+  };
+  QBDI::RangeSet<QBDI::rword> s;
+  s.add({(QBDI::rword)dummyFun0, (QBDI::rword)dummyFun0 + 0x100,
+         QBDI::auth_addr_t()});
+
+  vm.addInstrRuleRangeSet(s, cbk, QBDI::ANALYSIS_INSTRUCTION);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm.deleteAllInstrumentations();
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm.addInstrRuleRangeSet(s, std::move(cbk), QBDI::ANALYSIS_INSTRUCTION);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InstCbLambda-addMnemonicCB") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+  QBDI::InstCbLambda cbk = [&cbCalled](QBDI::VMInstanceRef, QBDI::GPRState *,
+                                       QBDI::FPRState *) {
+    cbCalled = true;
+    return QBDI::VMAction::CONTINUE;
+  };
+  vm.addMnemonicCB("*", QBDI::InstPosition::PREINST, cbk);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm.deleteAllInstrumentations();
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm.addMnemonicCB("*", QBDI::InstPosition::PREINST, std::move(cbk));
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InstCbLambda-addCodeCB") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+  QBDI::InstCbLambda cbk = [&cbCalled](QBDI::VMInstanceRef, QBDI::GPRState *,
+                                       QBDI::FPRState *) {
+    cbCalled = true;
+    return QBDI::VMAction::CONTINUE;
+  };
+  vm.addCodeCB(QBDI::InstPosition::PREINST, cbk);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm.deleteAllInstrumentations();
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm.addCodeCB(QBDI::InstPosition::PREINST, std::move(cbk));
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InstCbLambda-addCodeAddrCB") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+  QBDI::InstCbLambda cbk = [&cbCalled](QBDI::VMInstanceRef, QBDI::GPRState *,
+                                       QBDI::FPRState *) {
+    cbCalled = true;
+    return QBDI::VMAction::CONTINUE;
+  };
+  vm.addCodeAddrCB((QBDI::rword)dummyFun0, QBDI::InstPosition::PREINST, cbk);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm.deleteAllInstrumentations();
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm.addCodeAddrCB((QBDI::rword)dummyFun0, QBDI::InstPosition::PREINST,
+                   std::move(cbk));
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InstCbLambda-addCodeRangeCB") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+  QBDI::InstCbLambda cbk = [&cbCalled](QBDI::VMInstanceRef, QBDI::GPRState *,
+                                       QBDI::FPRState *) {
+    cbCalled = true;
+    return QBDI::VMAction::CONTINUE;
+  };
+  vm.addCodeRangeCB((QBDI::rword)dummyFun0, (QBDI::rword)dummyFun0 + 0x100,
+                    QBDI::InstPosition::PREINST, cbk);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  cbCalled = false;
+  vm.deleteAllInstrumentations();
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+
+  vm.addCodeRangeCB((QBDI::rword)dummyFun0, (QBDI::rword)dummyFun0 + 0x100,
+                    QBDI::InstPosition::PREINST, std::move(cbk));
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InstCbLambda-InstrRuleDataCBK") {
+  QBDI::rword retval;
+  bool cbCalled = false;
+  uint32_t count1 = 0;
+  uint32_t count2 = 0;
+  uint32_t *count = &count1;
+
+  QBDI::InstrRuleCbLambda cbk =
+      [&cbCalled, &count](
+          QBDI::VMInstanceRef,
+          const QBDI::InstAnalysis *) -> std::vector<QBDI::InstrRuleDataCBK> {
+    return {{QBDI::InstPosition::PREINST,
+             [&cbCalled, count](QBDI::VMInstanceRef, QBDI::GPRState *,
+                                QBDI::FPRState *) {
+               cbCalled = true;
+               (*count)++;
+               return QBDI::VMAction::CONTINUE;
+             }}};
+  };
+
+  vm.addInstrRule(cbk, QBDI::ANALYSIS_INSTRUCTION);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+  REQUIRE(count1 != 0);
+  REQUIRE(count2 == 0);
+
+  uint32_t backcount1 = count1;
+  cbCalled = false;
+  count1 = 0;
+  count = &count2;
+  vm.deleteAllInstrumentations();
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(!cbCalled);
+  REQUIRE(count1 == 0);
+  REQUIRE(count2 == 0);
+
+  vm.addInstrRule(std::move(cbk), QBDI::ANALYSIS_INSTRUCTION);
+
+  vm.call(&retval, (QBDI::rword)dummyFun0);
+  REQUIRE(retval == (QBDI::rword)42);
+  REQUIRE(cbCalled);
+  REQUIRE(count1 == 0);
+  REQUIRE(count2 == backcount1);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-InvalidInstruction") {
+  auto tc = TestCode["VMTest-InvalidInstruction"];
+  auto code = tc.code;
+  if (code.empty()) {
+    return;
+  }
+  auto start = (QBDI::rword)code.data();
+  auto stop = (QBDI::rword)(code.data() + code.size());
+
+  QBDI::simulateCall(state, FAKE_RET_ADDR);
+
+  // Instrument the whole code but only execute what is valid
+  vm.addInstrumentedRange(start, stop);
+  bool ran = vm.run(start, start + tc.size);
+  REQUIRE(ran);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-BreakingInstruction") {
+  auto tc = TestCode["VMTest-BreakingInstruction"];
+  auto code = tc.code;
+  if (code.empty()) {
+    return;
+  }
+  auto start = (QBDI::rword)code.data();
+
+  // Instrument only a part of the code
+  vm.addInstrumentedRange(start, start + tc.size);
+
+  // set the current sequence
+  int countBB = 0;
+  vm.addVMEventCB(QBDI::VMEvent::BASIC_BLOCK_NEW,
+                  [&countBB](QBDI::VMInstanceRef vm,
+                             const QBDI::VMState *vmState, QBDI::GPRState *,
+                             QBDI::FPRState *) {
+                    countBB++;
+                    return QBDI::VMAction::CONTINUE;
+                  });
+  QBDI::rword retval;
+  bool ran = vm.call(&retval, start);
+  REQUIRE(ran);
+  REQUIRE(countBB == 2);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-SelfModifyingCode1") {
+  auto tc = TestCode["VMTest-SelfModifyingCode1"];
+  auto code = tc.code;
+  if (code.empty()) {
+    return;
+  }
+  auto start = (QBDI::rword)code.data();
+  auto stop = (QBDI::rword)(code.data() + code.size());
+
+  QBDI::simulateCall(state, FAKE_RET_ADDR);
+
+  vm.addInstrumentedRange(start, stop);
+  bool ran = vm.run(start, FAKE_RET_ADDR);
+  REQUIRE(ran);
+
+  QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
+  REQUIRE(ret == (QBDI::rword)42);
+
+  SUCCEED();
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-SelfModifyingCode2") {
+  /**
+   * Test a strategy to handle self modifying code. Add a callback on write in
+   * the current basic block and invalid the cache if so.
+   * */
+  auto tc = TestCode["VMTest-SelfModifyingCode2"];
+  auto code = tc.code;
+  if (code.empty()) {
+    return;
+  }
+  auto start = (QBDI::rword)code.data();
+  auto stop = (QBDI::rword)(code.data() + code.size());
+
+  QBDI::simulateCall(state, FAKE_RET_ADDR);
+
+  vm.addInstrumentedRange(start, stop);
+
+  QBDI::RangeSet<QBDI::rword> instrumentedRange{};
+  QBDI::Range<QBDI::rword> currentSeq{0, 0, QBDI::real_addr_t()};
+
+  // set the current sequence
+  vm.addVMEventCB(QBDI::VMEvent::SEQUENCE_ENTRY,
+                  [&instrumentedRange, &currentSeq](
+                      QBDI::VMInstanceRef vm, const QBDI::VMState *vmState,
+                      QBDI::GPRState *, QBDI::FPRState *) {
+                    currentSeq = {vmState->sequenceStart, vmState->sequenceEnd,
+                                  QBDI::real_addr_t()};
+                    instrumentedRange.add(currentSeq);
+                    return QBDI::VMAction::CONTINUE;
+                  });
+
+  // Detect self modifing code in already cached code
+  vm.addMemAccessCB(
+      QBDI::MemoryAccessType::MEMORY_WRITE,
+      [&instrumentedRange, &currentSeq](QBDI::VMInstanceRef vm,
+                                        QBDI::GPRState *, QBDI::FPRState *) {
+        for (const auto &acc : vm->getInstMemoryAccess()) {
+          if ((acc.type & QBDI::MemoryAccessType::MEMORY_WRITE) == 0) {
+            continue;
+          }
+          if ((acc.flags & QBDI::MemoryAccessFlags::MEMORY_UNKNOWN_SIZE) != 0) {
+            continue;
+          }
+          if (instrumentedRange.overlaps({acc.accessAddress,
+                                          acc.accessAddress + acc.size,
+                                          QBDI::real_addr_t()})) {
+            // the access override a code address, clear the cache
+            vm->clearCache(acc.accessAddress, acc.accessAddress + acc.size);
+            // if the access is in the current sequence, schedule
+            // the clear now
+            if (currentSeq.overlaps({acc.accessAddress,
+                                     acc.accessAddress + acc.size,
+                                     QBDI::real_addr_t()})) {
+              return QBDI::VMAction::BREAK_TO_VM;
+            }
+          }
+        }
+        return QBDI::VMAction::CONTINUE;
+      });
+
+  bool ran = vm.run(start, FAKE_RET_ADDR);
+  REQUIRE(ran);
+
+  QBDI::rword ret = QBDI_GPR_GET(state, QBDI::REG_RETURN);
+  REQUIRE(ret == (QBDI::rword)42);
+
+  SUCCEED();
+}
+
+struct CheckReduceSizeData {
+  size_t lastCount;
+};
+
+TEST_CASE_METHOD(APITest, "VMTest-ReduceSize1") {
+  uint32_t count = 0;
+  // add dummy callback in order to increase the size of each patch
+  vm.addCodeCB(QBDI::InstPosition::PREINST, countInstruction, &count);
+  vm.addCodeCB(QBDI::InstPosition::POSTINST, countInstruction, &count);
+
+  CheckReduceSizeData data = {0};
+  vm.addVMEventCB(QBDI::SEQUENCE_ENTRY | QBDI::SEQUENCE_EXIT |
+                      QBDI::BASIC_BLOCK_NEW,
+                  [&](QBDI::VM *evm, const QBDI::VMState *vmState,
+                      QBDI::GPRState *gprState, QBDI::FPRState *fprState) {
+                    CHECK(evm == &vm);
+                    if ((vmState->event & QBDI::BASIC_BLOCK_NEW) != 0) {
+                      data.lastCount = vm.getNbExecBlock();
+                    }
+                    CHECK(data.lastCount == vm.getNbExecBlock());
+                    return QBDI::VMAction::CONTINUE;
+                  });
+
+  CHECK(vm.getNbExecBlock() == 0);
+
+  // backup GPRState to have the same state before each run
+  QBDI::GPRState backup = *(vm.getGPRState());
+
+  for (QBDI::rword j = 0; j < 4; j++) {
+    for (QBDI::rword i = 0; i < 8; i++) {
+      QBDI_DEBUG("Begin Loop iteration {} {}", j, i);
+      vm.setGPRState(&backup);
+
+      QBDI::rword retval;
+      bool ran =
+          vm.call(&retval, reinterpret_cast<QBDI::rword>(dummyFunBB),
+                  {i ^ j, 5, 13, reinterpret_cast<QBDI::rword>(dummyFun1),
+                   reinterpret_cast<QBDI::rword>(dummyFun1),
+                   reinterpret_cast<QBDI::rword>(dummyFun1)});
+      CHECK(ran);
+      CHECK(data.lastCount != 0);
+    }
+  }
+
+  size_t currentExecBlock = vm.getNbExecBlock();
+  while (currentExecBlock != 0) {
+    vm.reduceCacheTo(currentExecBlock - 1);
+    size_t newExecBlock = vm.getNbExecBlock();
+    CHECK(newExecBlock < currentExecBlock);
+    currentExecBlock = newExecBlock;
+  }
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-ReduceSize2") {
+  uint32_t count = 0;
+  // add dummy callback in order to increase the size of each patch
+  vm.addCodeCB(QBDI::InstPosition::PREINST, countInstruction, &count);
+  vm.addCodeCB(QBDI::InstPosition::POSTINST, countInstruction, &count);
+
+  vm.addVMEventCB(QBDI::BASIC_BLOCK_NEW,
+                  [](QBDI::VM *vm, const QBDI::VMState *vmState,
+                     QBDI::GPRState *gprState, QBDI::FPRState *fprState) {
+                    size_t lastCount = vm->getNbExecBlock();
+                    vm->reduceCacheTo(0);
+                    // vm doesn't clear the cache immediatly
+                    CHECK(lastCount == vm->getNbExecBlock());
+                    return QBDI::VMAction::CONTINUE;
+                  });
+
+  CHECK(vm.getNbExecBlock() == 0);
+
+  // backup GPRState to have the same state before each run
+  QBDI::GPRState backup = *(vm.getGPRState());
+
+  for (QBDI::rword j = 0; j < 4; j++) {
+    for (QBDI::rword i = 0; i < 8; i++) {
+      QBDI_DEBUG("Begin Loop iteration {} {}", j, i);
+      vm.setGPRState(&backup);
+
+      QBDI::rword retval;
+      bool ran =
+          vm.call(&retval, reinterpret_cast<QBDI::rword>(dummyFunBB),
+                  {i ^ j, 5, 13, reinterpret_cast<QBDI::rword>(dummyFun1),
+                   reinterpret_cast<QBDI::rword>(dummyFun1),
+                   reinterpret_cast<QBDI::rword>(dummyFun1)});
+      CHECK(ran);
+      CHECK(vm.getNbExecBlock() == 0);
+    }
+  }
+}
+
+TEST_CASE_METHOD(APITest, "VMTest-JitAnalysis") {
+  uint32_t count = 0;
+  // add dummy callback in order to increase the size of each patch
+  vm.addCodeCB(QBDI::InstPosition::PREINST, countInstruction, &count);
+  vm.addCodeCB(QBDI::InstPosition::POSTINST, countInstruction, &count);
+
+  std::set<QBDI::rword> instAddress;
+
+  vm.addInstrRule(
+      [&](QBDI::VM *evm, const QBDI::InstAnalysis *inst)
+          -> std::vector<QBDI::InstrRuleDataCBK> {
+        CHECK(evm == &vm);
+#ifdef QBDI_ARCH_ARM
+        if (inst->cpuMode == QBDI::CPUMode::Thumb) {
+          instAddress.insert(inst->address | 1);
+        } else {
+          instAddress.insert(inst->address);
+        }
+#else
+        instAddress.insert(inst->address);
+#endif
+        return {};
+      },
+      QBDI::AnalysisType::ANALYSIS_INSTRUCTION);
+
+  // backup GPRState to have the same state before each run
+  QBDI::GPRState backup = *(vm.getGPRState());
+
+  for (QBDI::rword j = 0; j < 4; j++) {
+    for (QBDI::rword i = 0; i < 8; i++) {
+      QBDI_DEBUG("Begin Loop iteration {} {}", j, i);
+      vm.setGPRState(&backup);
+
+      QBDI::rword retval;
+      bool ran =
+          vm.call(&retval, reinterpret_cast<QBDI::rword>(dummyFunBB),
+                  {i ^ j, 5, 13, reinterpret_cast<QBDI::rword>(dummyFun1),
+                   reinterpret_cast<QBDI::rword>(dummyFun1),
+                   reinterpret_cast<QBDI::rword>(dummyFun1)});
+      CHECK(ran);
+    }
+  }
+
+  for (auto address : instAddress) {
+    const auto *ana = vm.getCachedInstAnalysis(
+        address, QBDI::AnalysisType::ANALYSIS_JIT |
+                     QBDI::AnalysisType::ANALYSIS_INSTRUCTION);
+    REQUIRE(ana != nullptr);
+    CHECK(ana->patchAddress != 0);
+    CHECK(((uint32_t)ana->patchInstOffset) + ((uint32_t)ana->patchInstSize) <=
+          ((uint32_t)ana->patchSize));
+
+    const size_t increment = (QBDI::is_arm || QBDI::is_aarch64) ? 4 : 1;
+
+    for (size_t i = 0; i < ana->patchSize; i += increment) {
+      const auto *anaJit = vm.getJITInstAnalysis(
+          ana->patchAddress + i, QBDI::AnalysisType::ANALYSIS_JIT |
+                                     QBDI::AnalysisType::ANALYSIS_INSTRUCTION);
+      CHECK(anaJit != nullptr);
+      if (anaJit != nullptr) {
+        CHECK(anaJit->address == ana->address);
+      }
+    }
+  }
 }

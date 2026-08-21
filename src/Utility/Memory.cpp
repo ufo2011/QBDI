@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "llvm/Support/Process.h"
-
+#include <iterator>
+#include <memory>
 #include <set>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <string>
+#include <vector>
+
+#include "QBDI/Config.h"
 #include "QBDI/Memory.h"
 #include "QBDI/Memory.hpp"
+#include "QBDI/Range.h"
+#include "QBDI/State.h"
 #include "Utility/LogSys.h"
 
 #define FRAME_LENGTH 16
@@ -43,34 +53,32 @@ void *alignedAlloc(size_t size, size_t align) {
   if ((align == 0) || ((align & (align - 1)) != 0)) {
     return nullptr;
   }
-#if defined(QBDI_PLATFORM_LINUX) || defined(QBDI_PLATFORM_ANDROID) || \
-    defined(QBDI_PLATFORM_OSX)
+#if defined(QBDI_PLATFORM_WINDOWS)
+  allocated = _aligned_malloc(size, align);
+#else
   int ret = posix_memalign(&allocated, align, size);
   if (ret != 0) {
     return nullptr;
   }
-#elif defined(QBDI_PLATFORM_WINDOWS)
-  allocated = _aligned_malloc(size, align);
 #endif
   return allocated;
 }
 
 void alignedFree(void *ptr) {
-#if defined(QBDI_PLATFORM_LINUX) || defined(QBDI_PLATFORM_ANDROID) || \
-    defined(QBDI_PLATFORM_OSX)
-  free(ptr);
-#elif defined(QBDI_PLATFORM_WINDOWS)
+#if defined(QBDI_PLATFORM_WINDOWS)
   _aligned_free(ptr);
+#else
+  free(ptr);
 #endif
 }
 
 bool allocateVirtualStack(GPRState *ctx, uint32_t stackSize, uint8_t **stack) {
-  (*stack) = (uint8_t *)alignedAlloc(stackSize, 16);
+  (*stack) = static_cast<uint8_t *>(alignedAlloc(stackSize, 16));
   if (*stack == nullptr) {
     return false;
   }
 
-  QBDI_GPR_SET(ctx, REG_SP, (QBDI::rword)(*stack) + stackSize);
+  QBDI_GPR_SET(ctx, REG_SP, reinterpret_cast<QBDI::rword>(*stack) + stackSize);
   QBDI_GPR_SET(ctx, REG_BP, QBDI_GPR_GET(ctx, REG_SP));
 
   return true;
@@ -105,7 +113,8 @@ void simulateCallA(GPRState *ctx, rword returnAddress, uint32_t argNum,
   QBDI_GPR_SET(ctx, REG_SP, QBDI_GPR_GET(ctx, REG_SP) - sizeof(rword));
   *(rword *)(QBDI_GPR_GET(ctx, REG_SP)) = returnAddress;
   argsoff++;
-#elif defined(QBDI_ARCH_ARM)
+#elif defined(QBDI_ARCH_ARM) || defined(QBDI_ARCH_AARCH64)
+  QBDI_DEBUG("Set LR to: 0x{:x}", returnAddress);
   ctx->lr = returnAddress;
 #endif
 
@@ -138,6 +147,15 @@ void simulateCallA(GPRState *ctx, rword returnAddress, uint32_t argNum,
   UNSTACK_ARG(r1);
   UNSTACK_ARG(r2);
   UNSTACK_ARG(r3);
+#elif defined(QBDI_ARCH_AARCH64)
+  UNSTACK_ARG(x0);
+  UNSTACK_ARG(x1);
+  UNSTACK_ARG(x2);
+  UNSTACK_ARG(x3);
+  UNSTACK_ARG(x4);
+  UNSTACK_ARG(x5);
+  UNSTACK_ARG(x6);
+  UNSTACK_ARG(x7);
 #endif // ARCH
 #undef UNSTACK_ARG
   limit -= argsoff;
@@ -160,7 +178,7 @@ qbdi_MemoryMap *convert_MemoryMap_to_C(std::vector<MemoryMap> maps,
   }
   qbdi_MemoryMap *cmaps =
       (qbdi_MemoryMap *)malloc(*size * sizeof(qbdi_MemoryMap));
-  QBDI_REQUIRE_ACTION(cmaps != NULL, abort());
+  QBDI_REQUIRE_ABORT(cmaps != NULL, "Allocation Fail");
   for (size_t i = 0; i < *size; i++) {
     cmaps[i].start = maps[i].range.start();
     cmaps[i].end = maps[i].range.end();
@@ -201,7 +219,7 @@ char **qbdi_getModuleNames(size_t *size) {
     return NULL;
   }
   char **names = (char **)malloc(modules.size() * sizeof(char *));
-  QBDI_REQUIRE_ACTION(names != NULL, abort());
+  QBDI_REQUIRE_ABORT(names != NULL, "Allocation Fail");
   for (size_t i = 0; i < modules.size(); i++) {
     names[i] = strdup(modules[i].c_str());
   }

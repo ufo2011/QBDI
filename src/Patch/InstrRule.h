@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,25 +18,27 @@
 #ifndef INSTRRULE_H
 #define INSTRRULE_H
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
-#include "Patch/PatchCondition.h"
-#include "Patch/PatchGenerator.h"
 #include "Patch/PatchUtils.h"
+#include "Patch/Types.h"
 
 #include "QBDI/Callback.h"
-
-namespace llvm {
-class MCInstrInfo;
-class MCRegisterInfo;
-} // namespace llvm
+#include "QBDI/InstAnalysis.h"
+#include "QBDI/Range.h"
+#include "QBDI/State.h"
 
 namespace QBDI {
 
-class Assembly;
+class LLVMCPU;
 class Patch;
+class PatchCondition;
 class PatchGenerator;
+
+using PatchConditionUniquePtr = std::unique_ptr<PatchCondition>;
+using PatchGeneratorUniquePtrVec = std::vector<std::unique_ptr<PatchGenerator>>;
 
 /*! An instrumentation rule written in PatchDSL.
  */
@@ -48,7 +50,7 @@ protected:
   int priority;
 
 public:
-  InstrRule(int priority = 0) : priority(priority) {}
+  InstrRule(int priority = PRIORITY_DEFAULT) : priority(priority) {}
 
   virtual ~InstrRule() = default;
 
@@ -61,43 +63,42 @@ public:
 
   inline void setPriority(int priority) { this->priority = priority; };
 
-  inline virtual void changeVMInstanceRef(VMInstanceRef vminstance){};
+  inline virtual void changeVMInstanceRef(VMInstanceRef vminstance) {};
+
+  inline virtual bool changeDataPtr(void *data) { return false; };
 
   /*! Determine wheter this rule have to be apply on this Path and instrument if
    * needed.
    *
    * @param[in] patch     The current patch to instrument.
-   * @param[in] MCII      A LLVM::MCInstrInfo classes used for internal
-   *                      architecture specific queries.
-   * @param[in] MRI       A LLVM::MCRegisterInfo classes used for internal
-   *                      architecture specific queries.
-   * @param[in] assemby   Assembly object to generate InstAnalysis
+   * @param[in] llvmcpu   LLVMCPU object
    */
-  virtual bool tryInstrument(Patch &patch, const llvm::MCInstrInfo *MCII,
-                             const llvm::MCRegisterInfo *MRI,
-                             const Assembly *assembly) const = 0;
+  virtual bool tryInstrument(Patch &patch, const LLVMCPU &llvmcpu) const = 0;
 
   /*! Instrument a patch by evaluating its generators on the current context.
    * Also handles the temporary register management for this patch.
    *
-   * @param[in] patch  The current patch to instrument.
-   * @param[in] MCII   A LLVM::MCInstrInfo classes used for internal
-   *                   architecture specific queries.
-   * @param[in] MRI    A LLVM::MCRegisterInfo classes used for internal
-   *                   architecture specific queries.
+   * @param[in] patch       The current patch to instrument.
+   * @param[in] patchGen    The list of patchGenerator to apply
+   * @param[in] breakToHost Add a break to VM need to be add after the patch
+   * @param[in] position    Add the patch before or after the instruction
+   * @param[in] priority    The priority of this patch
+   * @param[in] tag         The tag for this patch
    */
-  void instrument(Patch &patch, const llvm::MCInstrInfo *MCII,
-                  const llvm::MCRegisterInfo *MRI,
-                  const PatchGenerator::UniquePtrVec &patchGen,
-                  bool breakToHost, InstPosition position) const;
+  void instrument(Patch &patch, const PatchGeneratorUniquePtrVec &patchGen,
+                  bool breakToHost, InstPosition position, int priority,
+                  RelocatableInstTag tag) const;
 };
 
-class InstrRuleBasic : public AutoUnique<InstrRule, InstrRuleBasic> {
+class InstrRuleBasicCBK : public AutoUnique<InstrRule, InstrRuleBasicCBK> {
 
-  PatchCondition::UniquePtr condition;
-  PatchGenerator::UniquePtrVec patchGen;
+  PatchConditionUniquePtr condition;
+  PatchGeneratorUniquePtrVec patchGen;
   InstPosition position;
   bool breakToHost;
+  RelocatableInstTag tag;
+  InstCallback cbk;
+  void *data;
 
 public:
   /*! Allocate a new instrumentation rule with a condition, a list of
@@ -105,68 +106,63 @@ public:
    *
    * @param[in] condition    A PatchCondition which determine wheter or not this
    *                         PatchRule applies.
-   * @param[in] patchGen     A vector of PatchGenerator which will produce the
-   *                         patch instructions.
+   * @param[in] cbk          The callback to call
+   * @param[in] data         The data pointer to give to the callback
    * @param[in] position     An enum indicating wether this instrumentation
    *                         should be positioned before the instruction or
-   * after it.
+   *                         after it.
    * @param[in] breakToHost  A boolean determining whether this instrumentation
    *                         should end with a break to host (in the case of a
-   * callback for example).
+   *                         callback for example).
+   * @param[in] priority     Priority of the callback
+   * @param[in] tag          A tag for the callback
    */
-  InstrRuleBasic(PatchCondition::UniquePtr &&condition,
-                 PatchGenerator::UniquePtrVec &&patchGen, InstPosition position,
-                 bool breakToHost, int priority = 0)
-      : AutoUnique<InstrRule, InstrRuleBasic>(priority),
-        condition(std::forward<PatchCondition::UniquePtr>(condition)),
-        patchGen(std::forward<PatchGenerator::UniquePtrVec>(patchGen)),
-        position(position), breakToHost(breakToHost) {}
+  InstrRuleBasicCBK(PatchConditionUniquePtr &&condition, InstCallback cbk,
+                    void *data, InstPosition position, bool breakToHost,
+                    int priority = PRIORITY_DEFAULT,
+                    RelocatableInstTag tag = RelocTagInvalid);
 
-  ~InstrRuleBasic() override = default;
+  ~InstrRuleBasicCBK() override;
 
-  inline std::unique_ptr<InstrRule> clone() const override {
-    return InstrRuleBasic::unique(condition->clone(), cloneVec(patchGen),
-                                  position, breakToHost, priority);
-  };
+  std::unique_ptr<InstrRule> clone() const override;
 
   inline InstPosition getPosition() const { return position; }
 
-  inline RangeSet<rword> affectedRange() const override {
-    return condition->affectedRange();
-  }
+  RangeSet<rword> affectedRange() const override;
 
   /*! Determine wheter this rule applies by evaluating this rule condition on
    * the current context.
    *
-   * @param[in] patch  A patch containing the current context.
-   * @param[in] MCII   An LLVM MC instruction info context.
+   * @param[in] patch     A patch containing the current context.
+   * @param[in] llvmcpu   LLVMCPU object
    *
    * @return True if this instrumentation condition evaluate to true on this
    * patch.
    */
-  bool canBeApplied(const Patch &patch, const llvm::MCInstrInfo *MCII) const;
+  bool canBeApplied(const Patch &patch, const LLVMCPU &llvmcpu) const;
 
-  inline bool tryInstrument(Patch &patch, const llvm::MCInstrInfo *MCII,
-                            const llvm::MCRegisterInfo *MRI,
-                            const Assembly *assembly) const override {
-    if (canBeApplied(patch, MCII)) {
-      instrument(patch, MCII, MRI, patchGen, breakToHost, position);
+  bool changeDataPtr(void *data) override;
+
+  inline bool tryInstrument(Patch &patch,
+                            const LLVMCPU &llvmcpu) const override {
+    if (canBeApplied(patch, llvmcpu)) {
+      instrument(patch, patchGen, breakToHost, position, priority, tag);
       return true;
     }
     return false;
   }
 };
 
-typedef const std::vector<std::unique_ptr<PatchGenerator>> &(*PatchGenMethod)(
-    Patch &patch, const llvm::MCInstrInfo *MCII,
-    const llvm::MCRegisterInfo *MRI);
+typedef const PatchGeneratorUniquePtrVec &(*PatchGenMethod)(
+    Patch &patch, const LLVMCPU &llvmcpu);
 
 class InstrRuleDynamic : public AutoUnique<InstrRule, InstrRuleDynamic> {
 
-  PatchCondition::UniquePtr condition;
+  PatchConditionUniquePtr condition;
   PatchGenMethod patchGenMethod;
   InstPosition position;
   bool breakToHost;
+  RelocatableInstTag tag;
 
 public:
   /*! Allocate a new instrumentation rule with a condition, a method to generate
@@ -182,45 +178,38 @@ public:
    * @param[in] breakToHost      A boolean determining whether this
    *                             instrumentation should end with a break to
    *                             host (in the case of a callback for example).
+   * @param[in] priority         Priority of the callback
+   * @param[in] tag              A tag for the callback
    */
-  InstrRuleDynamic(PatchCondition::UniquePtr &&condition,
+  InstrRuleDynamic(PatchConditionUniquePtr &&condition,
                    PatchGenMethod patchGenMethod, InstPosition position,
-                   bool breakToHost, int priority = 0)
-      : AutoUnique<InstrRule, InstrRuleDynamic>(priority),
-        condition(std::forward<PatchCondition::UniquePtr>(condition)),
-        patchGenMethod(patchGenMethod), position(position),
-        breakToHost(breakToHost) {}
+                   bool breakToHost, int priority = PRIORITY_DEFAULT,
+                   RelocatableInstTag tag = RelocTagInvalid);
 
-  ~InstrRuleDynamic() override = default;
+  ~InstrRuleDynamic() override;
 
-  inline std::unique_ptr<InstrRule> clone() const override {
-    return InstrRuleDynamic::unique(condition->clone(), patchGenMethod,
-                                    position, breakToHost, priority);
-  };
+  std::unique_ptr<InstrRule> clone() const override;
 
   inline InstPosition getPosition() const { return position; }
 
-  inline RangeSet<rword> affectedRange() const override {
-    return condition->affectedRange();
-  }
+  RangeSet<rword> affectedRange() const override;
 
   /*! Determine wheter this rule applies by evaluating this rule condition on
    * the current context.
    *
-   * @param[in] patch  A patch containing the current context.
-   * @param[in] MCII   An LLVM MC instruction info context.
+   * @param[in] patch     A patch containing the current context.
+   * @param[in] llvmcpu   LLVMCPU object
    *
    * @return True if this instrumentation condition evaluate to true on this
    * patch.
    */
-  bool canBeApplied(const Patch &patch, const llvm::MCInstrInfo *MCII) const;
+  bool canBeApplied(const Patch &patch, const LLVMCPU &llvmcpu) const;
 
-  inline bool tryInstrument(Patch &patch, const llvm::MCInstrInfo *MCII,
-                            const llvm::MCRegisterInfo *MRI,
-                            const Assembly *assembly) const override {
-    if (canBeApplied(patch, MCII)) {
-      instrument(patch, MCII, MRI, patchGenMethod(patch, MCII, MRI),
-                 breakToHost, position);
+  inline bool tryInstrument(Patch &patch,
+                            const LLVMCPU &llvmcpu) const override {
+    if (canBeApplied(patch, llvmcpu)) {
+      instrument(patch, patchGenMethod(patch, llvmcpu), breakToHost, position,
+                 priority, tag);
       return true;
     }
     return false;
@@ -238,21 +227,22 @@ class InstrRuleUser : public AutoClone<InstrRule, InstrRuleUser> {
 public:
   InstrRuleUser(InstrRuleCallback cbk, AnalysisType analysisType,
                 void *cbk_data, VMInstanceRef vm, RangeSet<rword> range,
-                int priority = 0)
-      : AutoClone<InstrRule, InstrRuleUser>(priority), cbk(cbk),
-        analysisType(analysisType), cbk_data(cbk_data), vm(vm), range(range) {}
+                int priority = 0);
 
-  ~InstrRuleUser() override = default;
+  ~InstrRuleUser() override;
 
   inline void changeVMInstanceRef(VMInstanceRef vminstance) override {
     vm = vminstance;
   };
 
+  inline bool changeDataPtr(void *data) override {
+    cbk_data = data;
+    return true;
+  };
+
   inline RangeSet<rword> affectedRange() const override { return range; }
 
-  bool tryInstrument(Patch &patch, const llvm::MCInstrInfo *MCII,
-                     const llvm::MCRegisterInfo *MRI,
-                     const Assembly *assembly) const override;
+  bool tryInstrument(Patch &patch, const LLVMCPU &llvmcpu) const override;
 };
 
 } // namespace QBDI

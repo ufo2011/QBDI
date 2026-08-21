@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,16 @@
 #ifndef SYSTEM_H
 #define SYSTEM_H
 
+#include <stddef.h>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "llvm/Support/Memory.h"
 
 namespace QBDI {
 bool isRWXSupported();
+bool isRWRXSupported();
 llvm::sys::MemoryBlock
 allocateMappedMemory(size_t NumBytes,
                      const llvm::sys::MemoryBlock *const NearBlock,

@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,17 +15,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "QBDI/VM_C.h"
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string>
+#include <vector>
+
+#include "QBDI/Callback.h"
 #include "QBDI/Errors.h"
-#include "QBDI/Platform.h"
+#include "QBDI/InstAnalysis.h"
+#include "QBDI/Options.h"
+#include "QBDI/State.h"
 #include "QBDI/VM.h"
+#include "QBDI/VM_C.h"
 #include "Utility/LogSys.h"
 
 namespace QBDI {
 
 void qbdi_initVM(VMInstanceRef *instance, const char *cpu, const char **mattrs,
                  Options opts) {
-  QBDI_REQUIRE_ACTION(instance, return );
+  QBDI_REQUIRE_ACTION(instance, return);
 
   *instance = nullptr;
   std::string cpuStr = "";
@@ -45,12 +54,12 @@ void qbdi_initVM(VMInstanceRef *instance, const char *cpu, const char **mattrs,
 }
 
 void qbdi_terminateVM(VMInstanceRef instance) {
-  QBDI_REQUIRE_ACTION(instance, return );
+  QBDI_REQUIRE_ACTION(instance, return);
   delete static_cast<VM *>(instance);
 }
 
 void qbdi_addInstrumentedRange(VMInstanceRef instance, rword start, rword end) {
-  QBDI_REQUIRE_ACTION(instance, return );
+  QBDI_REQUIRE_ACTION(instance, return);
   static_cast<VM *>(instance)->addInstrumentedRange(start, end);
 }
 
@@ -71,12 +80,12 @@ bool qbdi_instrumentAllExecutableMaps(VMInstanceRef instance) {
 
 void qbdi_removeInstrumentedRange(VMInstanceRef instance, rword start,
                                   rword end) {
-  QBDI_REQUIRE_ACTION(instance, return );
+  QBDI_REQUIRE_ACTION(instance, return);
   static_cast<VM *>(instance)->removeInstrumentedRange(start, end);
 }
 
 void qbdi_removeAllInstrumentedRanges(VMInstanceRef instance) {
-  QBDI_REQUIRE_ACTION(instance, return );
+  QBDI_REQUIRE_ACTION(instance, return);
   static_cast<VM *>(instance)->removeAllInstrumentedRanges();
 }
 
@@ -118,6 +127,34 @@ bool qbdi_callA(VMInstanceRef instance, rword *retval, rword function,
   return static_cast<VM *>(instance)->callA(retval, function, argNum, args);
 }
 
+bool qbdi_switchStackAndCall(VMInstanceRef instance, rword *retval,
+                             rword function, uint32_t stackSize,
+                             uint32_t argNum, ...) {
+  QBDI_REQUIRE_ACTION(instance, return false);
+  va_list ap;
+  va_start(ap, argNum);
+  bool res = static_cast<VM *>(instance)->switchStackAndCallV(
+      retval, function, argNum, ap, stackSize);
+  va_end(ap);
+  return res;
+}
+
+bool qbdi_switchStackAndCallV(VMInstanceRef instance, rword *retval,
+                              rword function, uint32_t stackSize,
+                              uint32_t argNum, va_list ap) {
+  QBDI_REQUIRE_ACTION(instance, return false);
+  return static_cast<VM *>(instance)->switchStackAndCallV(
+      retval, function, argNum, ap, stackSize);
+}
+
+bool qbdi_switchStackAndCallA(VMInstanceRef instance, rword *retval,
+                              rword function, uint32_t stackSize,
+                              uint32_t argNum, const rword *args) {
+  QBDI_REQUIRE_ACTION(instance, return false);
+  return static_cast<VM *>(instance)->switchStackAndCallA(
+      retval, function, argNum, args, stackSize);
+}
+
 GPRState *qbdi_getGPRState(VMInstanceRef instance) {
   QBDI_REQUIRE_ACTION(instance, return nullptr);
   return static_cast<VM *>(instance)->getGPRState();
@@ -128,14 +165,24 @@ FPRState *qbdi_getFPRState(VMInstanceRef instance) {
   return static_cast<VM *>(instance)->getFPRState();
 }
 
+uint32_t qbdi_getErrno(VMInstanceRef instance) {
+  QBDI_REQUIRE_ACTION(instance, return 0);
+  return static_cast<VM *>(instance)->getErrno();
+}
+
 void qbdi_setGPRState(VMInstanceRef instance, GPRState *gprState) {
-  QBDI_REQUIRE_ACTION(instance, return );
+  QBDI_REQUIRE_ACTION(instance, return);
   static_cast<VM *>(instance)->setGPRState(gprState);
 }
 
 void qbdi_setFPRState(VMInstanceRef instance, FPRState *fprState) {
-  QBDI_REQUIRE_ACTION(instance, return );
+  QBDI_REQUIRE_ACTION(instance, return);
   static_cast<VM *>(instance)->setFPRState(fprState);
+}
+
+void qbdi_setErrno(VMInstanceRef instance, uint32_t backupErrno) {
+  QBDI_REQUIRE_ACTION(instance, return);
+  static_cast<VM *>(instance)->setErrno(backupErrno);
 }
 
 Options qbdi_getOptions(VMInstanceRef instance) {
@@ -144,39 +191,44 @@ Options qbdi_getOptions(VMInstanceRef instance) {
 }
 
 void qbdi_setOptions(VMInstanceRef instance, Options options) {
-  QBDI_REQUIRE_ACTION(instance, return );
+  QBDI_REQUIRE_ACTION(instance, return);
   static_cast<VM *>(instance)->setOptions(options);
 }
 
 uint32_t qbdi_addMnemonicCB(VMInstanceRef instance, const char *mnemonic,
-                            InstPosition pos, InstCallback cbk, void *data) {
+                            InstPosition pos, InstCallback cbk, void *data,
+                            int priority) {
   QBDI_REQUIRE_ACTION(instance, return VMError::INVALID_EVENTID);
-  return static_cast<VM *>(instance)->addMnemonicCB(mnemonic, pos, cbk, data);
+  return static_cast<VM *>(instance)->addMnemonicCB(mnemonic, pos, cbk, data,
+                                                    priority);
 }
 
 uint32_t qbdi_addCodeCB(VMInstanceRef instance, InstPosition pos,
-                        InstCallback cbk, void *data) {
+                        InstCallback cbk, void *data, int priority) {
   QBDI_REQUIRE_ACTION(instance, return VMError::INVALID_EVENTID);
-  return static_cast<VM *>(instance)->addCodeCB(pos, cbk, data);
+  return static_cast<VM *>(instance)->addCodeCB(pos, cbk, data, priority);
 }
 
 uint32_t qbdi_addCodeAddrCB(VMInstanceRef instance, rword address,
-                            InstPosition pos, InstCallback cbk, void *data) {
+                            InstPosition pos, InstCallback cbk, void *data,
+                            int priority) {
   QBDI_REQUIRE_ACTION(instance, return VMError::INVALID_EVENTID);
-  return static_cast<VM *>(instance)->addCodeAddrCB(address, pos, cbk, data);
+  return static_cast<VM *>(instance)->addCodeAddrCB(address, pos, cbk, data,
+                                                    priority);
 }
 
 uint32_t qbdi_addCodeRangeCB(VMInstanceRef instance, rword start, rword end,
-                             InstPosition pos, InstCallback cbk, void *data) {
+                             InstPosition pos, InstCallback cbk, void *data,
+                             int priority) {
   QBDI_REQUIRE_ACTION(instance, return VMError::INVALID_EVENTID);
-  return static_cast<VM *>(instance)->addCodeRangeCB(start, end, pos, cbk,
-                                                     data);
+  return static_cast<VM *>(instance)->addCodeRangeCB(start, end, pos, cbk, data,
+                                                     priority);
 }
 
 uint32_t qbdi_addMemAccessCB(VMInstanceRef instance, MemoryAccessType type,
-                             InstCallback cbk, void *data) {
+                             InstCallback cbk, void *data, int priority) {
   QBDI_REQUIRE_ACTION(instance, return VMError::INVALID_EVENTID);
-  return static_cast<VM *>(instance)->addMemAccessCB(type, cbk, data);
+  return static_cast<VM *>(instance)->addMemAccessCB(type, cbk, data, priority);
 }
 
 uint32_t qbdi_addMemAddrCB(VMInstanceRef instance, rword address,
@@ -206,7 +258,7 @@ bool qbdi_deleteInstrumentation(VMInstanceRef instance, uint32_t id) {
 }
 
 void qbdi_deleteAllInstrumentations(VMInstanceRef instance) {
-  QBDI_REQUIRE_ACTION(instance, return );
+  QBDI_REQUIRE_ACTION(instance, return);
   static_cast<VM *>(instance)->deleteAllInstrumentations();
 }
 
@@ -222,6 +274,12 @@ const InstAnalysis *qbdi_getCachedInstAnalysis(const VMInstanceRef instance,
   QBDI_REQUIRE_ACTION(instance, return nullptr);
   return static_cast<const VM *>(instance)->getCachedInstAnalysis(address,
                                                                   type);
+}
+
+const InstAnalysis *qbdi_getJITInstAnalysis(const VMInstanceRef instance,
+                                            rword address, AnalysisType type) {
+  QBDI_REQUIRE_ACTION(instance, return nullptr);
+  return static_cast<const VM *>(instance)->getJITInstAnalysis(address, type);
 }
 
 bool qbdi_recordMemoryAccess(VMInstanceRef instance, MemoryAccessType type) {
@@ -282,6 +340,14 @@ void qbdi_clearCache(VMInstanceRef instance, rword start, rword end) {
   static_cast<VM *>(instance)->clearCache(start, end);
 }
 
+uint32_t qbdi_getNbExecBlock(VMInstanceRef instance) {
+  return static_cast<VM *>(instance)->getNbExecBlock();
+}
+
+void qbdi_reduceCacheTo(VMInstanceRef instance, uint32_t nb) {
+  static_cast<VM *>(instance)->reduceCacheTo(nb);
+}
+
 uint32_t qbdi_addInstrRule(VMInstanceRef instance, InstrRuleCallbackC cbk,
                            AnalysisType type, void *data) {
   QBDI_REQUIRE_ACTION(instance, return VMError::INVALID_EVENTID);
@@ -297,9 +363,9 @@ uint32_t qbdi_addInstrRuleRange(VMInstanceRef instance, rword start, rword end,
 }
 
 void qbdi_addInstrRuleData(InstrRuleDataVec cbks, InstPosition position,
-                           InstCallback cbk, void *data) {
-  QBDI_REQUIRE_ACTION(cbks, return );
-  cbks->emplace_back(position, cbk, data);
+                           InstCallback cbk, void *data, int priority) {
+  QBDI_REQUIRE_ACTION(cbks, return);
+  cbks->emplace_back(position, cbk, data, priority);
 }
 
 } // namespace QBDI

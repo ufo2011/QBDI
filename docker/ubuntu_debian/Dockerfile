@@ -1,6 +1,6 @@
 ARG DOCKER_IMG="ubuntu:latest"
 
-FROM $DOCKER_IMG as builder
+FROM $DOCKER_IMG AS builder
 
 ARG QBDI_ARCH="X86_64"
 
@@ -9,52 +9,34 @@ ENV USER="docker" \
     PREFIX="/usr" \
     QBDI_PLATFORM="linux"
 
+# setup backport to use cmake >= 3.28
+RUN ( cat /etc/debian_version | grep -v -q 12 ) || \
+    ( echo 'deb http://deb.debian.org/debian bookworm-backports main contrib non-free' > /etc/apt/sources.list.d/backports.list )
+
 # Get latest package list, upgrade packages, install required packages
 # and cleanup to keep container as small as possible
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends \
+        adduser \
         bash \
-        sudo \
         build-essential \
         cmake \
         g++ \
-        g++-multilib \
         git \
-        libstdc++-8-dev \
+        libstdc++-13-dev \
         ninja-build \
         pkg-config \
         wget \
         ca-certificates \
-        zlib1g-dev \
         python3 \
         python3-dev && \
+    ( ( cat /etc/debian_version | grep -v -q 12 ) || ( apt-get install -y --no-install-recommends cmake/bookworm-backports ) ) && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # create a user
-RUN adduser --disabled-password --gecos '' $USER && \
-    adduser $USER sudo && \
-    echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
-
-# switch to new user
-USER $USER
-
-# install QBDI compilation dependencies
-
-# git archive -o qbdi-deps.tar.gz --prefix=qbdi-deps/ HEAD deps
-ADD qbdi-deps.tar.gz $HOME/
-
-WORKDIR $HOME
-
-RUN sudo chown -R $USER:$USER .
-
-WORKDIR $HOME/qbdi-deps/deps/llvm/
-
-RUN python3 build.py prepare ${QBDI_PLATFORM}-${QBDI_ARCH} && \
-    python3 build.py build ${QBDI_PLATFORM}-${QBDI_ARCH} OFF && \
-    python3 build.py package ${QBDI_PLATFORM}-${QBDI_ARCH} && \
-    python3 build.py clean ${QBDI_PLATFORM}-${QBDI_ARCH}
+RUN adduser --disabled-password --gecos '' --home "$HOME" "$USER"
 
 # build / test / install QBDI
 ARG CMAKE_ARGUMENT=""
@@ -64,12 +46,12 @@ ADD qbdi.tar.gz $HOME/
 
 WORKDIR $HOME/qbdi
 
-RUN sudo chown -R $USER:$USER . && \
-    # link llvm
-    rm -rf deps && \
-    ln -s $HOME/qbdi-deps/deps deps && \
-    # build
-    mkdir build && \
+RUN chown -R $USER:$USER .
+
+# switch to new user
+USER $USER
+
+RUN mkdir build && \
     cd build && \
     cmake -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
@@ -77,7 +59,7 @@ RUN sudo chown -R $USER:$USER . && \
           -DQBDI_PLATFORM=$QBDI_PLATFORM \
           -DQBDI_ARCH=$QBDI_ARCH \
           -DCMAKE_INSTALL_PREFIX=$PREFIX \
-          -DQBDI_TOOLS_PYQBDI=ON \
+          -DQBDI_TOOLS_PYQBDI=OFF \
           -DQBDI_CCACHE=OFF \
           $CMAKE_ARGUMENT \
           ../ && \
@@ -95,6 +77,7 @@ WORKDIR /root
 
 COPY --from=builder /home/docker/qbdi/build/*.deb .
 RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive \
     apt-get install -y ./*.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

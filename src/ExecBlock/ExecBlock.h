@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,20 +18,30 @@
 #ifndef EXECBLOCK_H
 #define EXECBLOCK_H
 
-#include <iterator>
 #include <memory>
+#include <stdint.h>
 #include <vector>
 
-#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Memory.h"
-#include "llvm/Support/Process.h"
 
 #include "Patch/InstMetadata.h"
 #include "Patch/Types.h"
-#include "Utility/memory_ostream.h"
 
 #include "QBDI/Callback.h"
+#include "QBDI/Config.h"
+#include "QBDI/InstAnalysis.h"
 #include "QBDI/State.h"
+
+#if defined(QBDI_ARCH_X86_64) || defined(QBDI_ARCH_X86)
+#include "ExecBlock/X86_64/ScratchRegisterInfo_X86_64.h"
+#elif defined(QBDI_ARCH_ARM)
+#include "ExecBlock/ARM/ScratchRegisterInfo_ARM.h"
+#elif defined(QBDI_ARCH_AARCH64)
+#include "ExecBlock/AARCH64/ScratchRegisterInfo_AARCH64.h"
+#else
+#error "No ScratchRegisterInfo for this architecture"
+#endif
 
 namespace llvm {
 class MCInst;
@@ -39,7 +49,8 @@ class MCInst;
 
 namespace QBDI {
 
-class Assembly;
+class LLVMCPUs;
+class LLVMCPU;
 class RelocatableInst;
 class Patch;
 
@@ -48,14 +59,20 @@ struct Context;
 struct InstInfo {
   uint16_t seqID;
   uint16_t offset;
+  uint16_t offsetSkip;
   uint16_t shadowOffset;
   uint16_t shadowSize;
+  uint16_t tagOffset;
+  uint16_t tagSize;
+  ScratchRegisterSeqInfo sr;
 };
 
 struct SeqInfo {
   uint16_t startInstID;
   uint16_t endInstID;
   uint8_t executeFlags;
+  CPUMode cpuMode;
+  ScratchRegisterSeqInfo sr;
 };
 
 struct SeqWriteResult {
@@ -68,6 +85,11 @@ struct ShadowInfo {
   uint16_t instID;
   uint16_t tag;
   uint16_t shadowID;
+};
+
+struct TagInfo {
+  uint16_t tag;
+  uint16_t offset;
 };
 
 static const uint16_t EXEC_BLOCK_FULL = 0xFFFF;
@@ -85,11 +107,13 @@ private:
   VMInstanceRef vminstance;
   llvm::sys::MemoryBlock codeBlock;
   llvm::sys::MemoryBlock dataBlock;
-  std::unique_ptr<memory_ostream> codeStream;
-  const Assembly &assembly;
+  unsigned codeBlockPosition;
+  unsigned codeBlockMaxSize;
+  const LLVMCPUs &llvmCPUs;
   Context *context;
   rword *shadows;
   std::vector<ShadowInfo> shadowRegistry;
+  std::vector<TagInfo> tagRegistry;
   uint16_t shadowIdx;
   std::vector<InstMetadata> instMetadata;
   std::vector<InstInfo> instRegistry;
@@ -98,18 +122,20 @@ private:
   uint16_t currentSeq;
   uint16_t currentInst;
   uint32_t epilogueSize;
+  bool isFull;
+  ScratchRegisterInfo srInfo;
 
   /*! Verify if the code block is in read execute mode.
    *
    * @return Return true if the code block is in read execute mode.
    */
-  bool isRX() const { return pageState == RX; }
+  inline bool isRX() const { return pageState == RX; }
 
   /*! Verify if the code block is in read write mode.
    *
    * @return Return true if the code block is in read write mode.
    */
-  bool isRW() const { return pageState == RW; }
+  inline bool isRW() const { return pageState == RW; }
 
   /*! Changes the code block permissions to RX.
    */
@@ -119,10 +145,26 @@ private:
    */
   void makeRW();
 
+  void initScratchRegisterForPatch(std::vector<Patch>::const_iterator seqStart,
+                                   std::vector<Patch>::const_iterator seqEnd);
+
+  bool writePatch(std::vector<Patch>::const_iterator seqCurrent,
+                  std::vector<Patch>::const_iterator seqEnd,
+                  const LLVMCPU &llvmcpu);
+
+  bool writeCodeByte(const llvm::ArrayRef<char> &);
+
+  bool
+  applyRelocatedInst(const std::vector<std::unique_ptr<RelocatableInst>> &reloc,
+                     std::vector<TagInfo> *tags, const LLVMCPU &llvmcpu,
+                     unsigned limit = 0);
+
+  void finalizeScratchRegisterForPatch();
+
 public:
   /*! Construct a new ExecBlock
    *
-   * @param[in] assembly           Assembly used to assemble instructions in the
+   * @param[in] llvmCPUs           LLVMCPU used to assemble instructions in the
    *                               ExecBlock.
    * @param[in] vminstance         Pointer to public engine interface
    * @param[in] execBlockPrologue  cached prologue of ExecManager
@@ -130,7 +172,7 @@ public:
    * @param[in] epilogueSize       size in bytes of the epilogue (0 is not know)
    */
   ExecBlock(
-      const Assembly &assembly, VMInstanceRef vminstance = nullptr,
+      const LLVMCPUs &llvmCPUs, VMInstanceRef vminstance,
       const std::vector<std::unique_ptr<RelocatableInst>> *execBlockPrologue =
           nullptr,
       const std::vector<std::unique_ptr<RelocatableInst>> *execBlockEpilogue =
@@ -140,6 +182,7 @@ public:
   ~ExecBlock();
 
   ExecBlock(const ExecBlock &) = delete;
+  ExecBlock &operator=(const ExecBlock &) = delete;
 
   /*! Change vminstance when VM object is moved
    */
@@ -153,6 +196,8 @@ public:
    */
   void run();
 
+  static uint64_t getPageSize();
+
   /*! Execute the sequence currently programmed in the selector of the exec
    * block. Take care of the callbacks handling.
    */
@@ -165,7 +210,6 @@ public:
    *
    * @param seqStart [in] Iterator to the start of a list of patches.
    * @param seqEnd   [in] Iterator to the end of a list of patches.
-   * @param seqType  [in] Type of the sequence.
    *
    * @return A structure detailling the write operation result.
    */
@@ -180,6 +224,20 @@ public:
    */
   uint16_t splitSequence(uint16_t instID);
 
+  /*! Get the patch address associated with a Jitted Address.
+   *
+   * @param address  [in] The Jitted address. This is expected to point inside
+   *                      the codeBlock of this basicBlock
+   *
+   * @return The instruction ID that correspond to this JIT address, or
+   * NOT_FOUND.
+   */
+  uint16_t getPatchAddressOfJit(rword address) const;
+
+  /*! Get the address of the DataBlock
+   *
+   * @return The DataBlock offset.
+   */
   rword getDataBlockBase() const {
     return reinterpret_cast<rword>(dataBlock.base());
   }
@@ -190,9 +248,7 @@ public:
    * @return The computed offset.
    */
   rword getDataBlockOffset() const {
-    return reinterpret_cast<rword>(dataBlock.base()) -
-           reinterpret_cast<rword>(codeBlock.base()) -
-           codeStream->current_pos();
+    return codeBlock.allocatedSize() - codeBlockPosition;
   }
 
   /*! Compute the offset between the current code stream position and the start
@@ -202,7 +258,7 @@ public:
    * @return The computed offset.
    */
   rword getEpilogueOffset() const {
-    return codeBlock.allocatedSize() - epilogueSize - codeStream->current_pos();
+    return codeBlock.allocatedSize() - epilogueSize - codeBlockPosition;
   }
 
   /*! Get the size of the epilogue
@@ -217,8 +273,15 @@ public:
    * @return The PC value.
    */
   rword getCurrentPC() const {
-    return reinterpret_cast<rword>(codeBlock.base()) +
-           codeStream->current_pos();
+    return reinterpret_cast<rword>(codeBlock.base()) + codeBlockPosition;
+  }
+
+  /*! Get the begining of the codeBlock
+   *
+   * @return The first address of the codeBlock
+   */
+  rword getBaseCodeBlock() const {
+    return reinterpret_cast<rword>(codeBlock.base());
   }
 
   /*! Obtain the current instruction ID.
@@ -233,10 +296,11 @@ public:
    * match the start of the instruction).
    *
    * @param address The address of the start of the instruction.
+   * @param cpumode The mode of the instruction
    *
    * @return The instruction ID or NOT_FOUND.
    */
-  uint16_t getInstID(rword address) const;
+  uint16_t getInstID(rword address, CPUMode cpumode) const;
 
   /*! Obtain the current instruction ID.
    *
@@ -256,9 +320,17 @@ public:
    *
    * @param instID The instruction ID.
    *
-   * @return The address of the instruction.
+   * @return The real address of the instruction.
    */
   rword getInstAddress(uint16_t instID) const;
+
+  /*! Obtain the instrumented address for a specific instruction ID.
+   *
+   * @param instID The instruction ID.
+   *
+   * @return The address in the BasicBlock of the instruction.
+   */
+  rword getInstInstrumentedAddress(uint16_t instID) const;
 
   /*! Obtain the original MCInst for a specific instruction ID.
    *
@@ -268,13 +340,13 @@ public:
    */
   const llvm::MCInst &getOriginalMCInst(uint16_t instID) const;
 
-  /*! Obtain the analysis of an instruction metadata. Analysis results are
+  /*! Obtain the analysis of an instruction. Analysis results are
    * cached in the InstAnalysis. The validity of the returned pointer is only
    * guaranteed until the end of the callback, else a deepcopy of the structure
    * is required.
    *
-   * @param[in] instMetadata Metadata to analyze.
-   * @param[in] type         Properties to retrieve during analysis.
+   * @param[in] instID  The ID of the instruction to analyse.
+   * @param[in] type    Properties to retrieve during analysis.
    *
    * @return A InstAnalysis structure containing the analysis result.
    */
@@ -295,7 +367,7 @@ public:
    *
    * @return The sequence ID or NOT_FOUND.
    */
-  uint16_t getSeqID(rword address) const;
+  uint16_t getSeqID(rword address, CPUMode cpumode) const;
 
   /*! Obtain the sequence ID containing a specific instruction ID.
    *
@@ -408,11 +480,48 @@ public:
    */
   std::vector<ShadowInfo> queryShadowBySeq(uint16_t seqID, uint16_t tag) const;
 
+  /* Get all registered tag for an instruction
+   *
+   * @param instID  The id of the instruction in the ExecBlock
+   *
+   * @return a vector of tag matching the query
+   */
+  const llvm::ArrayRef<TagInfo> getTagByInst(uint16_t instID) const;
+
+  /* Query registered tag and returns a vector of matching tagID
+   *
+   * @param instID  The id of the instruction in the ExecBlock
+   * @param tag     The tag to search
+   *
+   * @return a vector of tagID matching the query
+   */
+  std::vector<TagInfo> queryTagByInst(uint16_t instID, uint16_t tag) const;
+
+  /* Get TagInfo JITTed address
+   *
+   * @param tinfo A TagInfo of this basicblock
+   *
+   * @return The address of the Tag in this ExecBlock
+   */
+  inline rword getAddressTag(const TagInfo &tinfo) const {
+    return reinterpret_cast<rword>(codeBlock.base()) + tinfo.offset;
+  }
+
   /* Compute the occupation ratio of the ExecBlock.
    *
    * @return the occupation ratio.
    */
   float occupationRatio() const;
+
+  const ScratchRegisterInfo &getScratchRegisterInfo() const { return srInfo; }
+
+  /* Get the LLVMCPU used by an instruction
+   *
+   * @param instID  The id of the instruction in the ExecBlock
+   *
+   * @return the LLVMCPU for the instruction
+   */
+  const LLVMCPU &getLLVMCPUByInst(uint16_t instID) const;
 };
 
 } // namespace QBDI

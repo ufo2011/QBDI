@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,21 +18,26 @@
 #ifndef LOGSYS_H
 #define LOGSYS_H
 
-#include <cstdarg>
-#include <cstdio>
-#include <cstring>
-#include <functional>
-#include <utility>
-#include <vector>
+#include <memory>
+#include <string>
 
+#include "Patch/Types.h"
+
+#include "QBDI/Callback.h"
+#include "QBDI/InstAnalysis.h"
 #include "QBDI/Logs.h"
-#include "QBDI/Platform.h"
+#include "QBDI/Options.h"
+#include "QBDI/State.h"
 #include "spdlog/spdlog.h"
 
-#if defined(QBDI_PLATFORM_LINUX) || defined(QBDI_PLATFORM_ANDROID) || \
-    defined(QBDI_PLATFORM_OSX)
-#include <unistd.h>
-#endif
+namespace llvm {
+class MCInst;
+}
+
+namespace QBDI {
+class LLVMCPU;
+class InstMetadata;
+class Patch;
 
 #define QBDI_INFO(...) SPDLOG_INFO(__VA_ARGS__)
 #define QBDI_WARN(...) SPDLOG_WARN(__VA_ARGS__)
@@ -43,7 +48,10 @@
 #define QBDI_DEBUG_BLOCK(block) block
 #define QBDI_DEBUG(...) SPDLOG_DEBUG(__VA_ARGS__)
 #else
-#define QBDI_DEBUG_BLOCK(block) (void)0
+#define QBDI_DEBUG_BLOCK(block) \
+  {                             \
+    (void)0;                    \
+  }
 #define QBDI_DEBUG(...) (void)0
 #endif
 
@@ -56,28 +64,36 @@
     QBDI_ERROR("Assertion Failed : {}", #req); \
     ac;                                        \
   }
+#define QBDI_REQUIRE_ABORT(req, ...) \
+  if (!(req)) {                      \
+    QBDI_CRITICAL(__VA_ARGS__);      \
+    spdlog::shutdown();              \
+    abort();                         \
+  }
+#define QBDI_ABORT(...)         \
+  do {                          \
+    QBDI_CRITICAL(__VA_ARGS__); \
+    spdlog::shutdown();         \
+    abort();                    \
+  } while (0);
 
-namespace QBDI {
+// formatter of internal enum
 
-class Logger {
-public:
-  Logger(void);
-  Logger(const Logger &) = delete;
-  Logger &operator=(const Logger &) = delete;
+std::string format_as(const QBDI::Patch &patch);
+rword format_as(Options opt);
+unsigned format_as(CPUMode mode);
+unsigned format_as(InstPosition pos);
+unsigned format_as(AnalysisType t);
+unsigned format_as(const RegLLVM &r);
+unsigned format_as(const Reg &r);
+rword format_as(const Shadow &s);
+uint16_t format_as(ShadowReservedTag tag);
+rword format_as(const Constant &cst);
+int64_t format_as(const Offset &off);
+unsigned format_as(const Temp &t);
+unsigned format_as(const Operand &op);
+unsigned format_as(RelocatableInstTag tag);
 
-  void setPriority(LogPriority priority);
-
-  void setFile(const std::string &f, bool truncate);
-
-  void setDefaultLogger();
-  void setConsoleLogger();
-
-  ~Logger(void);
-
-private:
-  std::shared_ptr<spdlog::logger> sink;
-};
-
-}; // namespace QBDI
+} // namespace QBDI
 
 #endif

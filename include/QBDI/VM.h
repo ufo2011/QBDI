@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,14 @@
 #define QBDI_VM_H_
 
 #include <cstdarg>
+#include <forward_list>
 #include <memory>
+#include <stdint.h>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "QBDI/Bitmask.h"
 #include "QBDI/Callback.h"
 #include "QBDI/Errors.h"
 #include "QBDI/InstAnalysis.h"
@@ -41,7 +44,7 @@ struct MemCBInfo;
 // Forward declaration of private InstrCBInfo
 struct InstrCBInfo;
 
-class QBDI_EXPORT VM {
+class VM {
 private:
   // Private internal engine
   std::unique_ptr<Engine> engine;
@@ -53,6 +56,11 @@ private:
   std::unique_ptr<
       std::vector<std::pair<uint32_t, std::unique_ptr<InstrCBInfo>>>>
       instrCBInfos;
+  std::forward_list<std::pair<uint32_t, VMCbLambda>> vmCBData;
+  std::forward_list<std::pair<uint32_t, InstCbLambda>> instCBData;
+  std::forward_list<std::pair<uint32_t, InstrRuleCbLambda>> instrRuleCBData;
+
+  uint32_t backupErrno;
 
 public:
   /*! Construct a new VM for a given CPU with specific attributes
@@ -61,10 +69,11 @@ public:
    * @param[in] mattrs A list of additional attributes
    * @param[in] opts   The options to enable in the VM
    */
-  VM(const std::string &cpu = "", const std::vector<std::string> &mattrs = {},
-     Options opts = Options::NO_OPT);
+  QBDI_EXPORT VM(const std::string &cpu = "",
+                 const std::vector<std::string> &mattrs = {},
+                 Options opts = Options::NO_OPT);
 
-  ~VM();
+  QBDI_EXPORT ~VM();
 
   /*! Move constructors.
    *  All the cache is keep.
@@ -72,7 +81,7 @@ public:
    *
    * @param[in] vm     The VM to move
    */
-  VM(VM &&vm);
+  QBDI_EXPORT VM(VM &&vm);
 
   /*! Move assignment operator
    *  All the cache is keep.
@@ -81,7 +90,7 @@ public:
    *
    * @param[in] vm     The VM to move
    */
-  VM &operator=(VM &&vm);
+  QBDI_EXPORT VM &operator=(VM &&vm);
 
   /*! Copy constructors
    *  The state and the configuration is copied. The cache isn't duplicate.
@@ -89,7 +98,7 @@ public:
    *
    * @param[in] vm     The VM to copy
    */
-  VM(const VM &vm);
+  QBDI_EXPORT VM(const VM &vm);
 
   /*! Copy assignment operator
    *  The state and the configuration is copied. The cache isn't duplicate.
@@ -98,39 +107,55 @@ public:
    *
    * @param[in] vm     The VM to copy
    */
-  VM &operator=(const VM &vm);
+  QBDI_EXPORT VM &operator=(const VM &vm);
 
   // delete const move constructor and const move assignment operator
-  VM(const VM &&vm) = delete;
-  VM &operator=(const VM &&vm) = delete;
+  QBDI_EXPORT VM(const VM &&vm) = delete;
+  QBDI_EXPORT VM &operator=(const VM &&vm) = delete;
 
   /*! Obtain the current general purpose register state.
    *
    * @return A structure containing the GPR state.
    */
-  GPRState *getGPRState() const;
+  QBDI_EXPORT GPRState *getGPRState() const;
 
   /*! Obtain the current floating point register state.
    *
    * @return A structure containing the FPR state.
    */
-  FPRState *getFPRState() const;
+  QBDI_EXPORT FPRState *getFPRState() const;
+
+  /*! Obtain the backuped value of errno, if the option
+   * OPT_DISABLE_ERRNO_BACKUP is not enable.
+   *
+   * @return the backupped value of errno
+   */
+  QBDI_EXPORT uint32_t getErrno() { return backupErrno; }
 
   /*! Set the GPR state
    *
    * @param[in] gprState A structure containing the GPR state.
    */
-  void setGPRState(const GPRState *gprState);
+  QBDI_EXPORT void setGPRState(const GPRState *gprState);
 
   /*! Set the FPR state
    *
    * @param[in] fprState A structure containing the FPR state.
    */
-  void setFPRState(const FPRState *fprState);
+  QBDI_EXPORT void setFPRState(const FPRState *fprState);
+
+  /*! Set the backuped value of errno, if the option
+   * OPT_DISABLE_ERRNO_BACKUP is not enable.
+   *
+   * @param[in] backupErrno_ the value to set
+   */
+  QBDI_EXPORT void setErrno(uint32_t backupErrno_) {
+    backupErrno = backupErrno_;
+  }
 
   /*! Get the current Options of the VM
    */
-  Options getOptions() const;
+  QBDI_EXPORT Options getOptions() const;
 
   /*! Set the Options of the VM
    *  This method mustn't be called when the VM runs.
@@ -140,14 +165,14 @@ public:
    * If the new options is different that the current ones, the cache will be
    * clear.
    */
-  void setOptions(Options options);
+  QBDI_EXPORT void setOptions(Options options);
 
   /*! Add an address range to the set of instrumented address ranges.
    *
    * @param[in] start  Start address of the range (included).
    * @param[in] end    End address of the range (excluded).
    */
-  void addInstrumentedRange(rword start, rword end);
+  QBDI_EXPORT void addInstrumentedRange(rword start, rword end);
 
   /*! Add the executable address ranges of a module to the set of instrumented
    * address ranges.
@@ -156,7 +181,7 @@ public:
    *
    * @return  True if at least one range was added to the instrumented ranges.
    */
-  bool addInstrumentedModule(const std::string &name);
+  QBDI_EXPORT bool addInstrumentedModule(const std::string &name);
 
   /*! Add the executable address ranges of a module to the set of instrumented
    * address ranges using an address belonging to the module.
@@ -165,19 +190,19 @@ public:
    *
    * @return  True if at least one range was added to the instrumented ranges.
    */
-  bool addInstrumentedModuleFromAddr(rword addr);
+  QBDI_EXPORT bool addInstrumentedModuleFromAddr(rword addr);
 
   /*! Adds all the executable memory maps to the instrumented range set.
    * @return  True if at least one range was added to the instrumented ranges.
    */
-  bool instrumentAllExecutableMaps();
+  QBDI_EXPORT bool instrumentAllExecutableMaps();
 
   /*! Remove an address range from the set of instrumented address ranges.
    *
    * @param[in] start  Start address of the range (included).
    * @param[in] end    End address of the range (excluded).
    */
-  void removeInstrumentedRange(rword start, rword end);
+  QBDI_EXPORT void removeInstrumentedRange(rword start, rword end);
 
   /*! Remove the executable address ranges of a module from the set of
    * instrumented address ranges.
@@ -187,7 +212,7 @@ public:
    * @return  True if at least one range was removed from the instrumented
    * ranges.
    */
-  bool removeInstrumentedModule(const std::string &name);
+  QBDI_EXPORT bool removeInstrumentedModule(const std::string &name);
 
   /*! Remove the executable address ranges of a module from the set of
    * instrumented address ranges using an address belonging to the module.
@@ -197,11 +222,11 @@ public:
    * @return  True if at least one range was removed from the instrumented
    * ranges.
    */
-  bool removeInstrumentedModuleFromAddr(rword addr);
+  QBDI_EXPORT bool removeInstrumentedModuleFromAddr(rword addr);
 
   /*! Remove all instrumented ranges.
    */
-  void removeAllInstrumentedRanges();
+  QBDI_EXPORT void removeAllInstrumentedRanges();
 
   /*! Start the execution by the DBI.
    *  This method mustn't be called if the VM already runs.
@@ -211,7 +236,7 @@ public:
    *
    * @return  True if at least one block has been executed.
    */
-  bool run(rword start, rword stop);
+  QBDI_EXPORT bool run(rword start, rword stop);
 
   /*! Call a function using the DBI (and its current state).
    *  This method mustn't be called if the VM already runs.
@@ -232,9 +257,11 @@ public:
    *     vm->addInstrumentedModuleFromAddr(funcPtr);
    *     rword retVal;
    *     vm->call(&retVal, funcPtr, {42});
+   *     QBDI::alignedFree(fakestack);
    *
    */
-  bool call(rword *retval, rword function, const std::vector<rword> &args = {});
+  QBDI_EXPORT bool call(rword *retval, rword function,
+                        const std::vector<rword> &args = {});
 
   /*! Call a function using the DBI (and its current state).
    *  This method mustn't be called if the VM already runs.
@@ -246,7 +273,8 @@ public:
    *
    * @return  True if at least one block has been executed.
    */
-  bool callA(rword *retval, rword function, uint32_t argNum, const rword *args);
+  QBDI_EXPORT bool callA(rword *retval, rword function, uint32_t argNum,
+                         const rword *args);
 
   /*! Call a function using the DBI (and its current state).
    *  This method mustn't be called if the VM already runs.
@@ -258,7 +286,74 @@ public:
    *
    * @return  True if at least one block has been executed.
    */
-  bool callV(rword *retval, rword function, uint32_t argNum, va_list ap);
+  QBDI_EXPORT bool callV(rword *retval, rword function, uint32_t argNum,
+                         va_list ap);
+
+  /*! Switch the stack and call a function using the DBI (and its current
+   *  state).
+   *  This method will allocate a new stack and switch to this stack. The
+   *  remaining space on the current stack will be use by the called method.
+   *  This method mustn't be called if the VM already runs.
+   *  The stack pointer in the state must'nt be used after the end of this
+   *  method.
+   *
+   * @param[in] [retval]   Pointer to the returned value (optional).
+   * @param[in] function   Address of the function start instruction.
+   * @param[in] args       A list of arguments.
+   * @param[in] stackSize  The size of the stack for the engine.
+   *
+   * @return  True if at least one block has been executed.
+   *
+   * @details Example:
+   *
+   *     // perform (with QBDI) a call similar to (*funcPtr)(42);
+   *     QBDI::VM *vm = new QBDI::VM();
+   *     QBDI::GPRState *state = vm->getGPRState();
+   *     vm->addInstrumentedModuleFromAddr(funcPtr);
+   *     rword retVal;
+   *     vm->switchStackAndCall(&retVal, funcPtr, {42});
+   *
+   */
+
+  QBDI_EXPORT bool switchStackAndCall(rword *retval, rword function,
+                                      const std::vector<rword> &args = {},
+                                      uint32_t stackSize = 0x20000);
+
+  /*! Switch the stack and call a function using the DBI (and its current
+   *  state).
+   *  This method mustn't be called if the VM already runs.
+   *  The stack pointer in the state must'nt be used after the end of this
+   *  method.
+   *
+   * @param[in] [retval]   Pointer to the returned value (optional).
+   * @param[in] function   Address of the function start instruction.
+   * @param[in] argNum     The number of arguments in the array of arguments.
+   * @param[in] args       An array of arguments.
+   * @param[in] stackSize  The size of the stack for the engine.
+   *
+   * @return  True if at least one block has been executed.
+   */
+  QBDI_EXPORT bool switchStackAndCallA(rword *retval, rword function,
+                                       uint32_t argNum, const rword *args,
+                                       uint32_t stackSize = 0x20000);
+
+  /*! Switch the stack and call a function using the DBI (and its current
+   *  state).
+   *  This method mustn't be called if the VM already runs.
+   *  The stack pointer in the state must'nt be used after the end of this
+   *  method.
+   *
+   * @param[in] [retval]   Pointer to the returned value (optional).
+   * @param[in] function   Address of the function start instruction.
+   * @param[in] argNum     The number of arguments in the variadic list.
+   * @param[in] ap         An stdarg va_list object.
+   * @param[in] stackSize  The size of the stack for the engine.
+   *
+   * @return  True if at least one block has been executed.
+   */
+  QBDI_EXPORT bool switchStackAndCallV(rword *retval, rword function,
+                                       uint32_t argNum, va_list ap,
+                                       uint32_t stackSize = 0x20000);
 
   /*! Add a custom instrumentation rule to the VM.
    *
@@ -270,10 +365,25 @@ public:
    * @return The id of the registered instrumentation
    * (or VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addInstrRule(InstrRuleCallback cbk, AnalysisType type, void *data);
+  QBDI_EXPORT uint32_t addInstrRule(InstrRuleCallback cbk, AnalysisType type,
+                                    void *data);
 
   // register C like InstrRuleCallback
-  uint32_t addInstrRule(InstrRuleCallbackC cbk, AnalysisType type, void *data);
+  QBDI_EXPORT uint32_t addInstrRule(InstrRuleCallbackC cbk, AnalysisType type,
+                                    void *data);
+
+  /*! Add a custom instrumentation rule to the VM.
+   *
+   * @param[in] cbk       A lambda function to the callback
+   * @param[in] type      Analyse type needed for this instruction function
+   *                      pointer to the callback
+   *
+   * @return The id of the registered instrumentation
+   * (or VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addInstrRule(const InstrRuleCbLambda &cbk,
+                                    AnalysisType type);
+  QBDI_EXPORT uint32_t addInstrRule(InstrRuleCbLambda &&cbk, AnalysisType type);
 
   /*! Add a custom instrumentation rule to the VM on a specify range
    *
@@ -287,12 +397,32 @@ public:
    * @return The id of the registered instrumentation (or
    * VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addInstrRuleRange(rword start, rword end, InstrRuleCallback cbk,
-                             AnalysisType type, void *data);
+  QBDI_EXPORT uint32_t addInstrRuleRange(rword start, rword end,
+                                         InstrRuleCallback cbk,
+                                         AnalysisType type, void *data);
 
   // register C like InstrRuleCallback
-  uint32_t addInstrRuleRange(rword start, rword end, InstrRuleCallbackC cbk,
-                             AnalysisType type, void *data);
+  QBDI_EXPORT uint32_t addInstrRuleRange(rword start, rword end,
+                                         InstrRuleCallbackC cbk,
+                                         AnalysisType type, void *data);
+
+  /*! Add a custom instrumentation rule to the VM on a specify range
+   *
+   * @param[in] start     Begin of the range of address where apply the rule
+   * @param[in] end       End of the range of address where apply the rule
+   * @param[in] cbk       A lambda function to the callback
+   * @param[in] type      Analyse type needed for this instruction function
+   *                      pointer to the callback
+   *
+   * @return The id of the registered instrumentation (or
+   * VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addInstrRuleRange(rword start, rword end,
+                                         const InstrRuleCbLambda &cbk,
+                                         AnalysisType type);
+  QBDI_EXPORT uint32_t addInstrRuleRange(rword start, rword end,
+                                         InstrRuleCbLambda &&cbk,
+                                         AnalysisType type);
 
   /*! Add a custom instrumentation rule to the VM on a specify set of range
    *
@@ -305,8 +435,26 @@ public:
    * @return The id of the registered instrumentation
    * (or VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addInstrRuleRangeSet(RangeSet<rword> range, InstrRuleCallback cbk,
-                                AnalysisType type, void *data);
+  QBDI_EXPORT uint32_t addInstrRuleRangeSet(RangeSet<rword> range,
+                                            InstrRuleCallback cbk,
+                                            AnalysisType type, void *data);
+
+  /*! Add a custom instrumentation rule to the VM on a specify set of range
+   *
+   * @param[in] range     Range of address where apply the rule
+   * @param[in] cbk       A lambda function to the callback
+   * @param[in] type      Analyse type needed for this instruction function
+   *                      pointer to the callback
+   *
+   * @return The id of the registered instrumentation
+   * (or VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addInstrRuleRangeSet(RangeSet<rword> range,
+                                            const InstrRuleCbLambda &cbk,
+                                            AnalysisType type);
+  QBDI_EXPORT uint32_t addInstrRuleRangeSet(RangeSet<rword> range,
+                                            InstrRuleCbLambda &&cbk,
+                                            AnalysisType type);
 
   /*! Register a callback event if the instruction matches the mnemonic.
    *
@@ -315,24 +463,61 @@ public:
    *                       (PREINST / POSTINST).
    * @param[in] cbk        A function pointer to the callback.
    * @param[in] data       User defined data passed to the callback.
+   * @param[in] priority   The priority of the callback.
    *
    * @return The id of the registered instrumentation (or
    * VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addMnemonicCB(const char *mnemonic, InstPosition pos,
-                         InstCallback cbk, void *data);
+  QBDI_EXPORT uint32_t addMnemonicCB(const char *mnemonic, InstPosition pos,
+                                     InstCallback cbk, void *data,
+                                     int priority = PRIORITY_DEFAULT);
+
+  /*! Register a callback event if the instruction matches the mnemonic.
+   *
+   * @param[in] mnemonic   Mnemonic to match.
+   * @param[in] pos        Relative position of the event callback
+   *                       (PREINST / POSTINST).
+   * @param[in] cbk        A lambda function to the callback
+   * @param[in] priority   The priority of the callback.
+   *
+   * @return The id of the registered instrumentation (or
+   * VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addMnemonicCB(const char *mnemonic, InstPosition pos,
+                                     const InstCbLambda &cbk,
+                                     int priority = PRIORITY_DEFAULT);
+  QBDI_EXPORT uint32_t addMnemonicCB(const char *mnemonic, InstPosition pos,
+                                     InstCbLambda &&cbk,
+                                     int priority = PRIORITY_DEFAULT);
 
   /*! Register a callback event for every instruction executed.
    *
-   * @param[in] pos   Relative position of the event callback
-   *                  (PREINST / POSTINST).
-   * @param[in] cbk   A function pointer to the callback.
-   * @param[in] data  User defined data passed to the callback.
+   * @param[in] pos        Relative position of the event callback
+   *                       (PREINST / POSTINST).
+   * @param[in] cbk        A function pointer to the callback.
+   * @param[in] data       User defined data passed to the callback.
+   * @param[in] priority   The priority of the callback.
    *
    * @return The id of the registered instrumentation
    * (or VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addCodeCB(InstPosition pos, InstCallback cbk, void *data);
+  QBDI_EXPORT uint32_t addCodeCB(InstPosition pos, InstCallback cbk, void *data,
+                                 int priority = PRIORITY_DEFAULT);
+
+  /*! Register a callback event for every instruction executed.
+   *
+   * @param[in] pos        Relative position of the event callback
+   *                       (PREINST / POSTINST).
+   * @param[in] cbk        A lambda function to the callback
+   * @param[in] priority   The priority of the callback.
+   *
+   * @return The id of the registered instrumentation
+   * (or VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addCodeCB(InstPosition pos, const InstCbLambda &cbk,
+                                 int priority = PRIORITY_DEFAULT);
+  QBDI_EXPORT uint32_t addCodeCB(InstPosition pos, InstCbLambda &&cbk,
+                                 int priority = PRIORITY_DEFAULT);
 
   /*! Register a callback for when a specific address is executed.
    *
@@ -340,12 +525,31 @@ public:
    * @param[in] pos      Relative position of the callback (PREINST / POSTINST).
    * @param[in] cbk      A function pointer to the callback.
    * @param[in] data     User defined data passed to the callback.
+   * @param[in] priority The priority of the callback.
    *
    * @return The id of the registered instrumentation (or
    * VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addCodeAddrCB(rword address, InstPosition pos, InstCallback cbk,
-                         void *data);
+  QBDI_EXPORT uint32_t addCodeAddrCB(rword address, InstPosition pos,
+                                     InstCallback cbk, void *data,
+                                     int priority = PRIORITY_DEFAULT);
+
+  /*! Register a callback for when a specific address is executed.
+   *
+   * @param[in] address  Code address which will trigger the callback.
+   * @param[in] pos      Relative position of the callback (PREINST / POSTINST).
+   * @param[in] cbk      A lambda function to the callback
+   * @param[in] priority The priority of the callback.
+   *
+   * @return The id of the registered instrumentation (or
+   * VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addCodeAddrCB(rword address, InstPosition pos,
+                                     const InstCbLambda &cbk,
+                                     int priority = PRIORITY_DEFAULT);
+  QBDI_EXPORT uint32_t addCodeAddrCB(rword address, InstPosition pos,
+                                     InstCbLambda &&cbk,
+                                     int priority = PRIORITY_DEFAULT);
 
   /*! Register a callback for when a specific address range is executed.
    *
@@ -356,12 +560,34 @@ public:
    * @param[in] pos      Relative position of the callback (PREINST / POSTINST).
    * @param[in] cbk      A function pointer to the callback.
    * @param[in] data     User defined data passed to the callback.
+   * @param[in] priority The priority of the callback.
    *
    * @return The id of the registered instrumentation (or
    * VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addCodeRangeCB(rword start, rword end, InstPosition pos,
-                          InstCallback cbk, void *data);
+  QBDI_EXPORT uint32_t addCodeRangeCB(rword start, rword end, InstPosition pos,
+                                      InstCallback cbk, void *data,
+                                      int priority = PRIORITY_DEFAULT);
+
+  /*! Register a callback for when a specific address range is executed.
+   *
+   * @param[in] start    Start of the address range which will trigger
+   *                     the callback.
+   * @param[in] end      End of the address range which will trigger
+   *                     the callback.
+   * @param[in] pos      Relative position of the callback (PREINST / POSTINST).
+   * @param[in] cbk      A lambda function to the callback
+   * @param[in] priority The priority of the callback.
+   *
+   * @return The id of the registered instrumentation (or
+   * VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addCodeRangeCB(rword start, rword end, InstPosition pos,
+                                      const InstCbLambda &cbk,
+                                      int priority = PRIORITY_DEFAULT);
+  QBDI_EXPORT uint32_t addCodeRangeCB(rword start, rword end, InstPosition pos,
+                                      InstCbLambda &&cbk,
+                                      int priority = PRIORITY_DEFAULT);
 
   /*! Register a callback event for every memory access matching the type
    * bitfield made by the instructions.
@@ -370,16 +596,36 @@ public:
    *                       QBDI::MEMORY_WRITE or both (QBDI::MEMORY_READ_WRITE).
    * @param[in] cbk        A function pointer to the callback.
    * @param[in] data       User defined data passed to the callback.
+   * @param[in] priority   The priority of the callback.
    *
    * @return The id of the registered instrumentation
    * (or VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addMemAccessCB(MemoryAccessType type, InstCallback cbk, void *data);
+  QBDI_EXPORT uint32_t addMemAccessCB(MemoryAccessType type, InstCallback cbk,
+                                      void *data,
+                                      int priority = PRIORITY_DEFAULT);
+
+  /*! Register a callback event for every memory access matching the type
+   * bitfield made by the instructions.
+   *
+   * @param[in] type       A mode bitfield: either QBDI::MEMORY_READ,
+   *                       QBDI::MEMORY_WRITE or both (QBDI::MEMORY_READ_WRITE).
+   * @param[in] cbk        A lambda function to the callback
+   * @param[in] priority   The priority of the callback.
+   *
+   * @return The id of the registered instrumentation
+   * (or VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addMemAccessCB(MemoryAccessType type,
+                                      const InstCbLambda &cbk,
+                                      int priority = PRIORITY_DEFAULT);
+  QBDI_EXPORT uint32_t addMemAccessCB(MemoryAccessType type, InstCbLambda &&cbk,
+                                      int priority = PRIORITY_DEFAULT);
 
   /*! Add a virtual callback which is triggered for any memory access at a
    * specific address matching the access type. Virtual callbacks are called via
    * callback forwarding by a gate callback triggered on every memory access.
-   * This incurs a high performance cost.
+   * This incurs a high performance cost. The callback has the default priority.
    *
    * @param[in] address  Code address which will trigger the callback.
    * @param[in] type     A mode bitfield: either QBDI::MEMORY_READ,
@@ -390,13 +636,32 @@ public:
    * @return The id of the registered instrumentation
    * (or VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addMemAddrCB(rword address, MemoryAccessType type, InstCallback cbk,
-                        void *data);
+  QBDI_EXPORT uint32_t addMemAddrCB(rword address, MemoryAccessType type,
+                                    InstCallback cbk, void *data);
+
+  /*! Add a virtual callback which is triggered for any memory access at a
+   * specific address matching the access type. Virtual callbacks are called via
+   * callback forwarding by a gate callback triggered on every memory access.
+   * This incurs a high performance cost. The callback has the default priority.
+   *
+   * @param[in] address  Code address which will trigger the callback.
+   * @param[in] type     A mode bitfield: either QBDI::MEMORY_READ,
+   *                     QBDI::MEMORY_WRITE or both (QBDI::MEMORY_READ_WRITE).
+   * @param[in] cbk      A lambda function to the callback
+   *
+   * @return The id of the registered instrumentation
+   * (or VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addMemAddrCB(rword address, MemoryAccessType type,
+                                    const InstCbLambda &cbk);
+  QBDI_EXPORT uint32_t addMemAddrCB(rword address, MemoryAccessType type,
+                                    InstCbLambda &&cbk);
 
   /*! Add a virtual callback which is triggered for any memory access in a
    * specific address range matching the access type. Virtual callbacks are
    * called via callback forwarding by a gate callback triggered on every memory
-   * access. This incurs a high performance cost.
+   * access. This incurs a high performance cost. The callback has the default
+   * priority.
    *
    * @param[in] start    Start of the address range which will trigger the
    *                     callback.
@@ -410,8 +675,32 @@ public:
    * @return The id of the registered instrumentation (or
    * VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addMemRangeCB(rword start, rword end, MemoryAccessType type,
-                         InstCallback cbk, void *data);
+  QBDI_EXPORT uint32_t addMemRangeCB(rword start, rword end,
+                                     MemoryAccessType type, InstCallback cbk,
+                                     void *data);
+
+  /*! Add a virtual callback which is triggered for any memory access in a
+   * specific address range matching the access type. Virtual callbacks are
+   * called via callback forwarding by a gate callback triggered on every memory
+   * access. This incurs a high performance cost. The callback has the default
+   * priority.
+   *
+   * @param[in] start    Start of the address range which will trigger the
+   *                     callback.
+   * @param[in] end      End of the address range which will trigger the
+   *                     callback.
+   * @param[in] type     A mode bitfield: either QBDI::MEMORY_READ,
+   *                     QBDI::MEMORY_WRITE or both (QBDI::MEMORY_READ_WRITE).
+   * @param[in] cbk      A lambda function to the callback
+   *
+   * @return The id of the registered instrumentation (or
+   * VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addMemRangeCB(rword start, rword end,
+                                     MemoryAccessType type,
+                                     const InstCbLambda &cbk);
+  QBDI_EXPORT uint32_t addMemRangeCB(rword start, rword end,
+                                     MemoryAccessType type, InstCbLambda &&cbk);
 
   /*! Register a callback event for a specific VM event.
    *
@@ -422,7 +711,18 @@ public:
    * @return The id of the registered instrumentation (or
    * VMError::INVALID_EVENTID in case of failure).
    */
-  uint32_t addVMEventCB(VMEvent mask, VMCallback cbk, void *data);
+  QBDI_EXPORT uint32_t addVMEventCB(VMEvent mask, VMCallback cbk, void *data);
+
+  /*! Register a callback event for a specific VM event.
+   *
+   * @param[in] mask  A mask of VM event type which will trigger the callback.
+   * @param[in] cbk   A lambda function to the callback.
+   *
+   * @return The id of the registered instrumentation (or
+   * VMError::INVALID_EVENTID in case of failure).
+   */
+  QBDI_EXPORT uint32_t addVMEventCB(VMEvent mask, const VMCbLambda &cbk);
+  QBDI_EXPORT uint32_t addVMEventCB(VMEvent mask, VMCbLambda &&cbk);
 
   /*! Remove an instrumentation.
    *
@@ -430,12 +730,12 @@ public:
    *
    * @return  True if instrumentation has been removed.
    */
-  bool deleteInstrumentation(uint32_t id);
+  QBDI_EXPORT bool deleteInstrumentation(uint32_t id);
 
   /*! Remove all the registered instrumentations.
    *
    */
-  void deleteAllInstrumentations();
+  QBDI_EXPORT void deleteAllInstrumentations();
 
   /*! Obtain the analysis of the current instruction. Analysis results are
    * cached in the VM. The validity of the returned pointer is only guaranteed
@@ -448,7 +748,7 @@ public:
    *
    * @return A InstAnalysis structure containing the analysis result.
    */
-  const InstAnalysis *getInstAnalysis(
+  QBDI_EXPORT const InstAnalysis *getInstAnalysis(
       AnalysisType type = ANALYSIS_INSTRUCTION | ANALYSIS_DISASSEMBLY) const;
 
   /*! Obtain the analysis of a cached instruction. Analysis results are cached
@@ -463,9 +763,30 @@ public:
    * @return A InstAnalysis structure containing the analysis result.
    *    null if the instruction isn't in the cache.
    */
-  const InstAnalysis *getCachedInstAnalysis(
+  QBDI_EXPORT const InstAnalysis *getCachedInstAnalysis(
       rword address,
       AnalysisType type = ANALYSIS_INSTRUCTION | ANALYSIS_DISASSEMBLY) const;
+
+  /*! Obtain the analysis of a JITed instruction. Analysis results are cached
+   * in the VM. The validity of the returned pointer is only guaranteed until
+   * the end of the callback or a call to a noconst method of the VM object.
+   * This API may be used to determine if a given address of the current
+   * process memory correspond to the JIT patch from this VM. Note that this
+   * call may allocate memory.
+   *
+   * @param[in] address The JIT address
+   * @param[in] [type]  Properties to retrieve during analysis.
+   *                    This argument is optional, defaulting to
+   *                    QBDI::ANALYSIS_INSTRUCTION | QBDI::ANALYSIS_DISASSEMBLY
+   *                    | ANALYSIS_JIT
+   *
+   * @return A InstAnalysis structure containing the analysis result.
+   *    null if the address isn't a valid
+   */
+  QBDI_EXPORT const InstAnalysis *
+  getJITInstAnalysis(rword address, AnalysisType type = ANALYSIS_INSTRUCTION |
+                                                        ANALYSIS_DISASSEMBLY |
+                                                        ANALYSIS_JIT) const;
 
   /*! Add instrumentation rules to log memory access using inline
    * instrumentation and instruction shadows.
@@ -477,21 +798,21 @@ public:
    * @return True if inline memory logging is supported, False if not or in case
    *         of error.
    */
-  bool recordMemoryAccess(MemoryAccessType type);
+  QBDI_EXPORT bool recordMemoryAccess(MemoryAccessType type);
 
   /*! Obtain the memory accesses made by the last executed instruction.
    *  The method should be called in an InstCallback.
    *
    * @return List of memory access made by the instruction.
    */
-  std::vector<MemoryAccess> getInstMemoryAccess() const;
+  QBDI_EXPORT std::vector<MemoryAccess> getInstMemoryAccess() const;
 
   /*! Obtain the memory accesses made by the last executed basic block.
    *  The method should be called in a VMCallback with VMEvent::SEQUENCE_EXIT.
    *
    * @return List of memory access made by the instruction.
    */
-  std::vector<MemoryAccess> getBBMemoryAccess() const;
+  QBDI_EXPORT std::vector<MemoryAccess> getBBMemoryAccess() const;
 
   /*! Pre-cache a known basic block
    *  This method mustn't be called if the VM already runs.
@@ -500,7 +821,7 @@ public:
    *
    * @return True if basic block has been inserted in cache.
    */
-  bool precacheBasicBlock(rword pc);
+  QBDI_EXPORT bool precacheBasicBlock(rword pc);
 
   /*! Clear a specific address range from the translation cache.
    *
@@ -508,11 +829,27 @@ public:
    * @param[in] end   End of the address range to clear from the cache.
    *
    */
-  void clearCache(rword start, rword end);
+  QBDI_EXPORT void clearCache(rword start, rword end);
 
   /*! Clear the entire translation cache.
    */
-  void clearAllCache();
+  QBDI_EXPORT void clearAllCache();
+
+  /*! Get the number of ExecBlock in the cache. Each block uses 2 memory pages
+   * and some heap allocations.
+   *
+   * @return  The number of ExecBlock in the cache.
+   */
+  QBDI_EXPORT uint32_t getNbExecBlock() const;
+
+  /*! Reduce the cache to X ExecBlock. Note that this will try to purge the
+   * oldest ExecBlock first, but the block may be recreate if needed by followed
+   * execution.
+   *
+   * @param[in] nb The number of BasicBlock that should remains in the cache
+   *               after call.
+   */
+  QBDI_EXPORT void reduceCacheTo(uint32_t nb);
 };
 
 } // namespace QBDI

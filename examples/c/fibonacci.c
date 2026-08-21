@@ -31,7 +31,7 @@ VMAction countIteration(VMInstanceRef vm, GPRState *gprState,
   return QBDI_CONTINUE;
 }
 
-static const size_t STACK_SIZE = 0x100000; // 1MB
+static const uint32_t STACK_SIZE = 0x100000; // 1MB
 
 int main(int argc, char **argv) {
   int n = 0;
@@ -60,12 +60,12 @@ int main(int argc, char **argv) {
   qbdi_allocateVirtualStack(state, STACK_SIZE, &fakestack);
 
   // Registering showInstruction() callback to print a trace of the execution
-  uint32_t cid = qbdi_addCodeCB(vm, QBDI_PREINST, showInstruction, NULL);
+  uint32_t cid = qbdi_addCodeCB(vm, QBDI_PREINST, showInstruction, NULL, 0);
   assert(cid != QBDI_INVALID_EVENTID);
 
   // Registering countIteration() callback
-  qbdi_addMnemonicCB(vm, "CALL*", QBDI_PREINST, countIteration,
-                     &iterationCount);
+  qbdi_addMnemonicCB(vm, "CALL*", QBDI_PREINST, countIteration, &iterationCount,
+                     0);
 
   // Setup Instrumentation Range
   bool res = qbdi_addInstrumentedModuleFromAddr(vm, (rword)&fibonacci);
@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
   res = qbdi_call(vm, &retvalue, (rword)fibonacci, 1, n);
   assert(res == true);
 
-  printf("fibonnaci(%d) returns %ld after %d recursions\n", n, retvalue,
+  printf("fibonnaci(%d) returns %zd after %d recursions\n", n, retvalue,
          iterationCount);
 
   // cleanup

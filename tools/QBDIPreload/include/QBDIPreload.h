@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,10 @@
 #define QBDIPRELOAD_H
 
 #include "QBDI.h"
+
+#if defined(_WIN32) || defined(WIN32)
+#include <Windows.h>
+#endif
 
 #ifdef __cplusplus
 namespace QBDI {
@@ -40,11 +44,37 @@ extern "C" {
  * declaration on a single line.
  */
 #ifdef __cplusplus
+
+#if defined(_WIN32) || defined(WIN32)
+#define QBDIPRELOAD_INIT                                      \
+  BOOLEAN WINAPI DllMain(HINSTANCE hDllHandle, DWORD nReason, \
+                         LPVOID Reserved) {                   \
+    UNREFERENCED_PARAMETER(hDllHandle);                       \
+    UNREFERENCED_PARAMETER(Reserved);                         \
+    QBDI::qbdipreload_attach_init();                          \
+    return QBDI::qbdipreload_hook_init(nReason);              \
+  }
+#else // not WIN32
 #define QBDIPRELOAD_INIT \
   __attribute__((constructor)) void init() { QBDI::qbdipreload_hook_init(); }
-#else
+#endif
+
+#else // not __cplusplus
+
+#if defined(_WIN32) || defined(WIN32)
+#define QBDIPRELOAD_INIT                                      \
+  BOOLEAN WINAPI DllMain(HINSTANCE hDllHandle, DWORD nReason, \
+                         LPVOID Reserved) {                   \
+    UNREFERENCED_PARAMETER(hDllHandle);                       \
+    UNREFERENCED_PARAMETER(Reserved);                         \
+    qbdipreload_attach_init();                                \
+    return qbdipreload_hook_init(nReason);                    \
+  }
+#else // not WIN32
 #define QBDIPRELOAD_INIT \
   __attribute__((constructor)) void init() { qbdipreload_hook_init(); }
+#endif
+
 #endif
 
 /*
@@ -55,15 +85,13 @@ extern "C" {
  * @param[in] gprCtx     Platform GPRState pointer
  * @param[in] gprState   QBDI GPRState pointer
  */
-QBDI_EXPORT void qbdipreload_threadCtxToGPRState(const void *gprCtx,
-                                                 GPRState *gprState);
+void qbdipreload_threadCtxToGPRState(const void *gprCtx, GPRState *gprState);
 
 /** Convert a QBDIPreload FPR context (platform dependent) to a QBDI FPR state.
  * @param[in] fprCtx     Platform FPRState pointer
  * @param[in] fprState   QBDI FPRState pointer
  */
-QBDI_EXPORT void qbdipreload_floatCtxToFPRState(const void *fprCtx,
-                                                FPRState *fprState);
+void qbdipreload_floatCtxToFPRState(const void *fprCtx, FPRState *fprState);
 
 /** Enable QBDIPreload hook on the main function (using its address)
  *
@@ -72,7 +100,7 @@ QBDI_EXPORT void qbdipreload_floatCtxToFPRState(const void *fprCtx,
  *
  * @param[in] main       Pointer to the main function
  */
-QBDI_EXPORT int qbdipreload_hook_main(void *main);
+int qbdipreload_hook_main(void *main);
 
 /*
  * QBDIPreload callbacks
@@ -133,11 +161,23 @@ extern int qbdipreload_on_exit(int status);
  * Private API
  */
 
-QBDI_EXPORT int qbdipreload_hook_init();
+#if defined(_WIN32) || defined(WIN32)
 
-QBDI_EXPORT void *qbdipreload_setup_exception_handler(uint32_t target,
-                                                      uint32_t mask,
-                                                      void *handler);
+extern BOOL g_bIsAttachMode; /* TRUE if attach mode is activated */
+
+QBDI_EXPORT BOOLEAN qbdipreload_hook_init(DWORD nReason);
+BOOLEAN qbdipreload_attach_init();
+void qbdipreload_attach_close();
+QBDI_EXPORT BOOLEAN qbdipreload_read_shmem(LPVOID lpData, DWORD dwMaxBytesRead);
+
+#else
+
+int qbdipreload_hook_init();
+
+#endif
+
+void *qbdipreload_setup_exception_handler(uint32_t target, uint32_t mask,
+                                          void *handler);
 
 #ifdef __cplusplus
 } // "C"

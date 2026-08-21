@@ -1,7 +1,7 @@
 /*
  * This file is part of pyQBDI (python binding for QBDI).
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -128,7 +128,7 @@ trampoline_InstrRuleCallback(VMInstanceRef vm, const InstAnalysis *analysis,
         new TrampData<PyInstCallback>(cb.cbk, cb.data)};
     data->id = cbk->id;
     res.emplace_back(cb.position, trampoline_InstCallback,
-                     static_cast<void *>(data.get()));
+                     static_cast<void *>(data.get()), cb.priority);
     vec.push_back(std::move(data));
   }
 
@@ -154,8 +154,10 @@ void init_binding_VM(py::module_ &m) {
       .def("getFPRState", &VM::getFPRState,
            py::return_value_policy::reference_internal,
            "Obtain the current floating point register state.")
+      .def("getErrno", &VM::getErrno, "Get the backuped errno.")
       .def("setGPRState", &VM::setGPRState, "Set the GPR state.", "gprState"_a)
       .def("setFPRState", &VM::setFPRState, "Set the FPR state.", "fprState"_a)
+      .def("setErrno", &VM::setErrno, "Set the backuped errno.", "errno"_a)
       .def("addInstrumentedRange", &VM::addInstrumentedRange,
            "Add an address range to the set of instrumented address ranges.",
            "start"_a, "end"_a)
@@ -227,71 +229,77 @@ void init_binding_VM(py::module_ &m) {
       .def(
           "addMnemonicCB",
           [](VM &vm, const char *mnemonic, InstPosition pos,
-             PyInstCallback &cbk, py::object &obj) {
+             PyInstCallback &cbk, py::object &obj, int priority) {
             std::unique_ptr<TrampData<PyInstCallback>> data{
                 new TrampData<PyInstCallback>(cbk, obj)};
             uint32_t n =
                 vm.addMnemonicCB(mnemonic, pos, &trampoline_InstCallback,
-                                 static_cast<void *>(data.get()));
+                                 static_cast<void *>(data.get()), priority);
             data->id = n;
             return addTrampData(n, InstCallbackMap, std::move(data));
           },
           "Register a callback event if the instruction matches the mnemonic.",
-          "mnemonic"_a, "pos"_a, "cbk"_a, "data"_a)
+          "mnemonic"_a, "pos"_a, "cbk"_a, "data"_a,
+          "priority"_a = PRIORITY_DEFAULT)
       .def(
           "addCodeCB",
-          [](VM &vm, InstPosition pos, PyInstCallback &cbk, py::object &obj) {
+          [](VM &vm, InstPosition pos, PyInstCallback &cbk, py::object &obj,
+             int priority) {
             std::unique_ptr<TrampData<PyInstCallback>> data{
                 new TrampData<PyInstCallback>(cbk, obj)};
-            uint32_t n = vm.addCodeCB(pos, &trampoline_InstCallback,
-                                      static_cast<void *>(data.get()));
+            uint32_t n =
+                vm.addCodeCB(pos, &trampoline_InstCallback,
+                             static_cast<void *>(data.get()), priority);
             data->id = n;
             return addTrampData(n, InstCallbackMap, std::move(data));
           },
           "Register a callback event for every instruction executed.", "pos"_a,
-          "cbk"_a, "data"_a)
+          "cbk"_a, "data"_a, "priority"_a = PRIORITY_DEFAULT)
       .def(
           "addCodeAddrCB",
           [](VM &vm, rword address, InstPosition pos, PyInstCallback &cbk,
-             py::object &obj) {
+             py::object &obj, int priority) {
             std::unique_ptr<TrampData<PyInstCallback>> data{
                 new TrampData<PyInstCallback>(cbk, obj)};
             uint32_t n =
                 vm.addCodeAddrCB(address, pos, &trampoline_InstCallback,
-                                 static_cast<void *>(data.get()));
+                                 static_cast<void *>(data.get()), priority);
             data->id = n;
             return addTrampData(n, InstCallbackMap, std::move(data));
           },
           "Register a callback for when a specific address is executed.",
-          "address"_a, "pos"_a, "cbk"_a, "data"_a)
+          "address"_a, "pos"_a, "cbk"_a, "data"_a,
+          "priority"_a = PRIORITY_DEFAULT)
       .def(
           "addCodeRangeCB",
           [](VM &vm, rword start, rword end, InstPosition pos,
-             PyInstCallback &cbk, py::object &obj) {
+             PyInstCallback &cbk, py::object &obj, int priority) {
             std::unique_ptr<TrampData<PyInstCallback>> data{
                 new TrampData<PyInstCallback>(cbk, obj)};
             uint32_t n =
                 vm.addCodeRangeCB(start, end, pos, &trampoline_InstCallback,
-                                  static_cast<void *>(data.get()));
+                                  static_cast<void *>(data.get()), priority);
             data->id = n;
             return addTrampData(n, InstCallbackMap, std::move(data));
           },
           "Register a callback for when a specific address range is executed.",
-          "start"_a, "end"_a, "pos"_a, "cbk"_a, "data"_a)
+          "start"_a, "end"_a, "pos"_a, "cbk"_a, "data"_a,
+          "priority"_a = PRIORITY_DEFAULT)
       .def(
           "addMemAccessCB",
           [](VM &vm, MemoryAccessType type, PyInstCallback &cbk,
-             py::object &obj) {
+             py::object &obj, int priority) {
             std::unique_ptr<TrampData<PyInstCallback>> data{
                 new TrampData<PyInstCallback>(cbk, obj)};
-            uint32_t n = vm.addMemAccessCB(type, &trampoline_InstCallback,
-                                           static_cast<void *>(data.get()));
+            uint32_t n =
+                vm.addMemAccessCB(type, &trampoline_InstCallback,
+                                  static_cast<void *>(data.get()), priority);
             data->id = n;
             return addTrampData(n, InstCallbackMap, std::move(data));
           },
           "Register a callback event for every memory access matching the type "
           "bitfield made by the instructions.",
-          "type"_a, "cbk"_a, "data"_a)
+          "type"_a, "cbk"_a, "data"_a, "priority"_a = PRIORITY_DEFAULT)
       .def(
           "addMemAddrCB",
           [](VM &vm, rword address, MemoryAccessType type, PyInstCallback &cbk,
@@ -372,6 +380,22 @@ void init_binding_VM(py::module_ &m) {
                     "DISASSEMBLY"),
           py::return_value_policy::copy)
       .def(
+          "getJITInstAnalysis",
+          [](const VM &vm, rword address, AnalysisType type) {
+            return vm.getJITInstAnalysis(address, type);
+          },
+          "Obtain the analysis of a JITed instruction. Analysis results are "
+          "cached in the VM. This API may be used to determine if a given "
+          "address of the current process memory correspond to the JIT patch "
+          "from this VM.",
+          "address"_a,
+          py::arg_v("type",
+                    AnalysisType::ANALYSIS_INSTRUCTION |
+                        AnalysisType::ANALYSIS_DISASSEMBLY,
+                    "AnalysisType.ANALYSIS_INSTRUCTION|AnalysisType.ANALYSIS_"
+                    "DISASSEMBLY"),
+          py::return_value_policy::copy)
+      .def(
           "getCachedInstAnalysis",
           [](const VM &vm, rword address, AnalysisType type) {
             return vm.getCachedInstAnalysis(address, type);
@@ -381,9 +405,10 @@ void init_binding_VM(py::module_ &m) {
           "address"_a,
           py::arg_v("type",
                     AnalysisType::ANALYSIS_INSTRUCTION |
-                        AnalysisType::ANALYSIS_DISASSEMBLY,
+                        AnalysisType::ANALYSIS_DISASSEMBLY |
+                        AnalysisType::ANALYSIS_JIT,
                     "AnalysisType.ANALYSIS_INSTRUCTION|AnalysisType.ANALYSIS_"
-                    "DISASSEMBLY"),
+                    "DISASSEMBLY|AnalysisType.ANALYSIS_JIT"),
           py::return_value_policy::copy)
       .def("recordMemoryAccess", &VM::recordMemoryAccess,
            "Add instrumentation rules to log memory access using inline "
@@ -401,7 +426,12 @@ void init_binding_VM(py::module_ &m) {
            "Clear a specific address range from the translation cache.",
            "start"_a, "end"_a)
       .def("clearAllCache", &VM::clearAllCache,
-           "Clear the entire translation cache.");
+           "Clear the entire translation cache.")
+      .def("getNbExecBlock", &VM::getNbExecBlock,
+           "Get the number of ExecBlock in the cache. Each block uses 2 memory "
+           "pages and some heap allocations.")
+      .def("reduceCacheTo", &VM::reduceCacheTo,
+           "Reduce the cache to X ExecBlock.", "nb"_a);
 }
 
 } // namespace pyQBDI

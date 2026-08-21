@@ -4,7 +4,8 @@ QBDIPreload
 ===========
 
 QBDIPreload is a small utility library that provides code injection capabilities using dynamic library injection.
-It works on Linux and macOS respectively with the ``LD_PRELOAD`` and ``DYLD_INSERT_LIBRARIES`` mechanisms.
+It works on Linux and macOS respectively with the ``LD_PRELOAD`` and ``DYLD_INSERT_LIBRARIES`` mechanisms, and on
+Windows using our ``QBDIWinPreloader.exe`` tool or a dll injection mechanism of your own choice.
 
 Thanks to QBDIPreload, you can instrument the main function of an executable that has been dynamically linked.
 You can also define various callbacks that are called at specific times throughout the execution.
@@ -16,7 +17,7 @@ To use QBDIPreload, you must have a minimal codebase: a constructor and several 
 Like callbacks, hook functions are directly called by QBDIPreload.
 
 First of all, the constructor of QBDIPreload has to be initialised through declaring the macro :c:var:`QBDIPRELOAD_INIT`.
-It's worth noting that this macro must be only defined once in your code.
+It's worth noting that this macro must be only be defined once in your code.
 
 The :cpp:func:`qbdipreload_on_start` and :cpp:func:`qbdipreload_on_premain` hook functions are called at different stages during the execution of the programme.
 They only need to return :c:var:`QBDIPRELOAD_NOT_HANDLED` if you don't want to modify the hook procedure.
@@ -71,7 +72,7 @@ Obviously, don't forget to register your callback(s) prior to running the VM.
 Exit hook
 ---------
 
-QBDIPreload also intercepts the calls on standard exit functions (``exit`` and ``_exit``).
+QBDIPreload also intercepts calls to standard exit functions (``exit`` and ``_exit``).
 Typically, these are called when the executable is about to terminate.
 If so, the :cpp:func:`qbdipreload_on_exit` method is called and can be used to save some data about the execution you want to keep before exiting.
 Note that the hook function is not called if the executable exits with a direct system call or a segmentation fault.
@@ -97,6 +98,13 @@ Then, in order to test it against a target, simply running the following command
 
     # on macOS
     sudo DYLD_BIND_AT_LAUNCH=1 DYLD_INSERT_LIBRARIES=./libqbdi_mytracer.so <executable> [<parameters> ...]
+
+    # on Windows
+    QBDIWinPreloader.exe libqbdi_mytracer.dll <executable> [<parameters> ...]
+
+.. note::
+   QBDIWinPreloader.exe can be found in the installation bin folder of QBDI.
+   It's recommended to pass the full path of your injection DLL when using this tool.
 
 As the loader is not in the instrumentation range, we recommend setting ``LD_BIND_NOW`` or ``DYLD_BIND_AT_LAUNCH``
 in order to resolve and bind all symbols before the instrumentation.
@@ -129,7 +137,7 @@ Generate a template
 -------------------
 
 A QBDI template can be considered as a baseline project, a minimal component you can modify and build your instrumentation tool on.
-They are provided to help you effortlessly start off a new QBDI based project.
+They are provided to help you effortlessly start off a new QBDI-based project.
 The binary responsible for generating a template is shipped in the release packages and can be used as follows:
 
 .. code:: bash
@@ -139,3 +147,47 @@ The binary responsible for generating a template is shipped in the release packa
     mkdir build && cd build
     cmake ..
     make
+
+
+On macOS
+--------
+
+.. _macos-apple-silicon:
+
+Apple silicon architecture
+++++++++++++++++++++++++++
+
+(This information was last verified on macOS Tahoe 26.0.1. Other versions might differ slightly.)
+
+On Apple silicon, binaries can be compiled for two different ABIs, i.e. ``arm64`` and ``arm64e``.
+QBDI should be compiled with the matching ABIs, by adding ``-DCMAKE_OSX_ARCHITECTURES="arm64"`` or ``-DCMAKE_OSX_ARCHITECTURES="arm64e"`` in CMake command line.
+To check which ABI a binary was compiled for, use:
+
+.. code:: bash
+
+    lipo -archs $BINARY_PATH
+
+For user-built binaries, QBDIPreload should function correctly without any additional setup, provided that a QBDIPreload version matching the target ABI is used.
+
+Injecting into system binaries, which are always ``arm64e``, requires, at minimum, disabling `System Integrity Protection <https://support.apple.com/en-us/HT204899>`_.
+For example, doing so makes it possible to inject QBDIPreload into ``/bin/ls``.
+
+Other platform binaries, such as ``imagent``, additionally require disabling Apple Mobile File Integrity (AMFI),
+i.e. by setting the appropriate boot-arg with:
+
+.. code:: bash
+
+    sudo nvram boot-args='amfi_get_out_of_my_way=1'
+
+Disabling AMFI may break some apps.
+
+To troubleshoot injection failures, review system log messages using the Console application.
+
+Intel architecture
+++++++++++++++++++
+
+(This information hasn't been recently verified and may be outdated.)
+
+For user-built binaries, QBDIPreload should function correctly without any additional setup.
+
+For system binaries, the same caveats described for the Apple silicon architecture likely apply.

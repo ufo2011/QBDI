@@ -1,7 +1,7 @@
 /*
  * This file is part of QBDI.
  *
- * Copyright 2017 - 2021 Quarkslab
+ * Copyright 2017 - 2025 Quarkslab
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <stddef.h>
+#include <stdint.h>
 
+#include "MCTargetDesc/X86BaseInfo.h"
 #include "X86InstrInfo.h"
+#include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCInstrDesc.h"
+#include "llvm/MC/MCInstrInfo.h"
 
+#include "Engine/LLVMCPU.h"
 #include "Patch/ExecBlockFlags.h"
-#include "Patch/InstInfo.h"
 #include "Patch/Types.h"
+#include "Patch/X86_64/ExecBlockFlags_X86_64.h"
 #include "Utility/LogSys.h"
 
 namespace QBDI {
@@ -38,13 +45,16 @@ struct ExecBlockFlagsArray {
                  (llvm::X86::MM0 <= i && i <= llvm::X86::MM7) ||
                  llvm::X86::FPSW == i || llvm::X86::FPCW == i) {
         arr[i] = ExecBlockFlags::needFPU;
+      } else if (i == llvm::X86::FS || i == llvm::X86::GS) {
+        arr[i] = ExecBlockFlags::needFSGS;
       } else {
         arr[i] = 0;
       }
     }
   }
 
-  inline uint8_t get(size_t reg) const {
+  inline uint8_t get(RegLLVM reg_) const {
+    size_t reg = reg_.getValue();
     if (reg < llvm::X86::NUM_TARGET_REGS)
       return arr[reg];
 
@@ -55,15 +65,15 @@ struct ExecBlockFlagsArray {
 
 } // namespace
 
-const uint8_t defaultExecuteFlags =
-    ExecBlockFlags::needAVX | ExecBlockFlags::needFPU;
+const uint8_t defaultExecuteFlags = ExecBlockFlags::needAVX |
+                                    ExecBlockFlags::needFPU |
+                                    ExecBlockFlags::needFSGS;
 
 uint8_t getExecBlockFlags(const llvm::MCInst &inst,
-                          const llvm::MCInstrInfo *MCII,
-                          const llvm::MCRegisterInfo *MRI) {
+                          const QBDI::LLVMCPU &llvmcpu) {
   static constexpr ExecBlockFlagsArray cache;
 
-  const llvm::MCInstrDesc &desc = MCII->get(inst.getOpcode());
+  const llvm::MCInstrDesc &desc = llvmcpu.getMCII().get(inst.getOpcode());
   uint8_t flags = 0;
 
   // register flag
@@ -74,13 +84,11 @@ uint8_t getExecBlockFlags(const llvm::MCInst &inst,
     }
   }
 
-  const uint16_t *implicitRegs = desc.getImplicitDefs();
-  for (; implicitRegs && *implicitRegs; implicitRegs++) {
-    flags |= cache.get(*implicitRegs);
+  for (const unsigned implicitRegs : desc.implicit_uses()) {
+    flags |= cache.get(implicitRegs);
   }
-  implicitRegs = desc.getImplicitUses();
-  for (; implicitRegs && *implicitRegs; implicitRegs++) {
-    flags |= cache.get(*implicitRegs);
+  for (const unsigned implicitRegs : desc.implicit_defs()) {
+    flags |= cache.get(implicitRegs);
   }
 
   // detect implicit FPU instruction
@@ -91,8 +99,14 @@ uint8_t getExecBlockFlags(const llvm::MCInst &inst,
     }
   }
 
-  if ((flags & ExecBlockFlags::needAVX) != 0)
+  if ((flags & ExecBlockFlags::needAVX) != 0) {
     flags |= ExecBlockFlags::needFPU;
+  }
+
+  // enable needFSGS for SYSCALL
+  if (inst.getOpcode() == llvm::X86::SYSCALL) {
+    flags |= ExecBlockFlags::needFSGS;
+  }
 
   return flags;
 }
